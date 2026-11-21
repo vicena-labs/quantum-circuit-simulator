@@ -307,9 +307,13 @@ def pauli_rotation(pauli, angle):
 
 
 def evolution_step(hamiltonian, dt, order=1):
-    """Instructions for one Trotter step exp(-i H dt) to first or second order.
+    """Instructions for one product-formula step approximating exp(-i H dt).
 
-    dt may be a number or an Angle. Identity terms only add a global phase and are dropped.
+    order 1 is Lie-Trotter, order 2 the symmetric Strang splitting, and any
+    higher even order Suzuki's recursion (J. Math. Phys. 32, 400 (1991)):
+    S_2k(dt) = S_2k-2(p dt)^2 S_2k-2((1 - 4p) dt) S_2k-2(p dt)^2 with
+    p = 1 / (4 - 4^(1/(2k-1))). dt may be a number or an Angle. Identity terms
+    only add a global phase and are dropped.
     """
     terms = [(c, p) for c, p in hamiltonian.terms if p]
     if order == 1:
@@ -319,11 +323,16 @@ def evolution_step(hamiltonian, dt, order=1):
         middle = pauli_rotation(terms[-1][1], dt * (2 * terms[-1][0])) if terms else []
         mirrored = [g for c, p in reversed(terms[:-1]) for g in pauli_rotation(p, dt * c)]
         return half + middle + mirrored
-    raise ValueError("order must be 1 or 2")
+    if order > 2 and order % 2 == 0:
+        p = 1 / (4 - 4 ** (1 / (order - 1)))
+        outer = evolution_step(hamiltonian, dt * p, order - 2)
+        return 2 * outer + evolution_step(hamiltonian, dt * (1 - 4 * p), order - 2) + 2 * outer
+    raise ValueError("order must be 1 or an even number")
 
 
 def trotter(hamiltonian, time, steps=1, order=1, initial=None):
-    """A Program approximating exp(-i H time) |initial> with `steps` Trotter steps.
+    """A Program approximating exp(-i H time) |initial> with `steps` steps of a product formula
+    of the given order (1, 2, or a higher even order; see `evolution_step`).
 
     time is a number, or a parameter name (str) so that one prepared plan
     serves every time and the gradient is d<O>/dt. initial is None for |0..0>,
