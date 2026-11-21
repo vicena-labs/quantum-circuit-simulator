@@ -1,6 +1,7 @@
 """Versioned JSON schema validation; no code loading or arbitrary matrix input."""
 from __future__ import annotations
 import re
+from ._core._reference import DEFAULT_MAX_TERMS
 from .api import Circuit, _integer
 
 
@@ -19,7 +20,7 @@ def decode_request(data):
     _integer(data['schema_version'], 'schema_version', 1, 1)
     if not isinstance(data.get('gradients', True), bool):
         raise ValueError('gradients must be a boolean')
-    c = Circuit(data['n_qubits'], data.get('n_parameters',0), data.get('max_terms',50_000))
+    c = Circuit(data['n_qubits'], data.get('n_parameters',0), data.get('max_terms',DEFAULT_MAX_TERMS))
     ops=data['operations']
     if not isinstance(ops,list) or len(ops)>10_000: raise ValueError("operations must be a list of at most 10000 entries")
     for entry in ops:
@@ -27,7 +28,7 @@ def decode_request(data):
         op=entry['op'].upper()
         if op in {'H','SX','X','Y','Z','CZ','ECR'}:
             fields(entry,('op','wires')); c.gate(op,entry['wires'])
-        elif op in {'RX','RY','RZ'}:
+        elif op in {'RX','RY','RZ','RZZ'}:
             fields(entry,('op','wires','theta'),('param',)); c.gate(op,entry['wires'],entry['theta'],entry.get('param',-1))
         elif op=='FSIM':
             fields(entry,('op','wires','theta','phi'),('param',)); c.fsim(entry['wires'],entry['theta'],entry['phi'],entry.get('param',-1))
@@ -83,7 +84,7 @@ def decode_qasm_request(data):
         noise = Device.from_dict(data['device']).noise_model()
     # Readout applies to the measured Paulis, so X and Y observables work too.
     noise, readout = _without_readout(Noise.coerce(noise))
-    converted = from_qasm(data['qasm'], noise=noise, max_terms=data.get('max_terms', 50_000))
+    converted = from_qasm(data['qasm'], noise=noise, max_terms=data.get('max_terms', DEFAULT_MAX_TERMS))
     c = converted.circuit
     raw = data['observables']
     if isinstance(raw, list):
@@ -114,7 +115,7 @@ def decode_compiled_request(data):
     compiled = compile_circuit(data['qasm'], Device.from_dict(data['device']),
                                router=options.get('router', 'greedy'), layout=options.get('layout', 'greedy'),
                                noise=options.get('noise', True), idle_noise=options.get('idle_noise', True),
-                               noise_scale=options.get('noise_scale', 1.0), max_terms=data.get('max_terms', 50_000))
+                               noise_scale=options.get('noise_scale', 1.0), max_terms=data.get('max_terms', DEFAULT_MAX_TERMS))
     raw = data['observables']
     if isinstance(raw, list):
         for item in raw:

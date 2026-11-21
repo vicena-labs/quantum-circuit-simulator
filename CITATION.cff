@@ -5,7 +5,7 @@ type: software
 authors:
   - family-names: Farza
     given-names: Mehdi
-version: 0.5.0rc1
+version: 0.5.0rc2
 license: Apache-2.0
 repository-code: "https://github.com/vicena-labs/quantum-circuit-simulator"
 keywords:

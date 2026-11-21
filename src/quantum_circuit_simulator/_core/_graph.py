@@ -55,8 +55,22 @@ def _fourier(stage):
             for column in range(4):
                 result[2, row, column] = np.trace(P[column] @ tangent).real / 2
         return result
+    if stage.name == "RZZ":
+        # Like a rotation on 16 two-qubit Paulis: those commuting with Z.Z stay,
+        # the others turn by the angle towards i[ZZ, P]/2.
+        generator = np.kron(P[2], P[2])
+        result = np.zeros((5, 16, 16))
+        for row, observable in enumerate(P2):
+            commutator = generator @ observable - observable @ generator
+            if np.allclose(commutator, 0):
+                result[0, row, row] = 1.0
+                continue
+            result[1, row, row] = 1.0
+            for column, pauli in enumerate(P2):
+                result[2, row, column] = np.trace(pauli @ (.5j * commutator)).real / 4
+        return result
     if stage.name != "FSIM":
-        raise ValueError("graph rebinding supports RX, RY, RZ and FSIM")
+        raise ValueError("graph rebinding supports RX, RY, RZ, RZZ and FSIM")
 
     # U(t) = A + cos(t) B + sin(t) C. Form the five Fourier
     # coefficient matrices directly; this remains valid at zero angles and

@@ -11,7 +11,7 @@ import numbers
 import threading
 from typing import Mapping, Sequence
 import numpy as np
-from ._core._reference import MAX_PARAMETERS, NoisyPauliCircuit, ConeOverflow
+from ._core._reference import DEFAULT_MAX_TERMS, MAX_PARAMETERS, MAX_TERMS, NoisyPauliCircuit, ConeOverflow
 
 
 # Hamiltonians of small molecules reach thousands of terms; each term costs one
@@ -73,11 +73,15 @@ class Evaluation:
     backend: str
     error_bound: float | None = None
     gradient_error_bound: tuple[float, ...] | None = None
+    # False when error_bound is no tighter than the trivial bound ||O||_1 + |value|:
+    # the value is then supported only by convergence across truncations.
+    bound_informative: bool | None = None
 
     def as_dict(self):
         out = {"value": self.value, "gradient": list(self.gradient), "backend": self.backend}
         if self.error_bound is not None:
             out["error_bound"] = self.error_bound
+            out["bound_informative"] = self.bound_informative
         if self.gradient_error_bound is not None:
             out["gradient_error_bound"] = list(self.gradient_error_bound)
         return out
@@ -93,11 +97,11 @@ class Circuit:
     pass. max_terms limits each observable cone, not all process memory. This
     is a trusted local numerical library, not an isolation boundary for hostile input.
     """
-    def __init__(self, n_qubits: int, n_parameters: int = 0, max_terms: int = 50_000):
+    def __init__(self, n_qubits: int, n_parameters: int = 0, max_terms: int = DEFAULT_MAX_TERMS):
         self._impl = NoisyPauliCircuit(
             _integer(n_qubits, "n_qubits", 1, 16384),
             _integer(n_parameters, "n_parameters", 0, MAX_PARAMETERS),
-            _integer(max_terms, "max_terms", 1, 1_000_000),
+            _integer(max_terms, "max_terms", 1, MAX_TERMS),
         )
 
     @property
@@ -122,11 +126,11 @@ class Circuit:
         if not isinstance(name, str): raise ValueError("gate name must be text")
         name = name.upper()
         one = {"H", "SX", "X", "Y", "Z", "RX", "RY", "RZ"}
-        if name not in one | {"CZ", "ECR"}:
+        if name not in one | {"CZ", "ECR", "RZZ"}:
             raise ValueError("unsupported gate; use fsim() for fSim and unitary() for any other matrix")
         ws = self._wires(wires, 1 if name in one else 2)
         angle = _real(theta, "theta"); p = self._param(param); k = self._scale(scale, p)
-        if name not in {"RX", "RY", "RZ"} and (p != -1 or angle != 0):
+        if name not in {"RX", "RY", "RZ", "RZZ"} and (p != -1 or angle != 0):
             raise ValueError("fixed gates do not accept an angle or parameter")
         self._impl.gate(name, ws, angle, p, k)
         return self
@@ -391,7 +395,7 @@ class Prepared:
         if not self._observables:
             zero = (0.,)*self.n_parameters if gradients else ()
             return Evaluation(0., zero, self.backend, 0. if bounded else None,
-                              zero if bounded and gradients else None)
+                              zero if bounded and gradients else None, True if bounded else None)
         if self._plan is not None:
             self._plan.bind(shifts)
             try:
@@ -411,6 +415,7 @@ class Prepared:
             if bounded:
                 # A dense fallback is exact, so its bound is zero.
                 error_bound = stats.get('error_bound', 0.)
+                informative = stats.get('bound_informative', True)
                 gradient_bound = stats.get('gradient_error_bound') or (0.,)*self.n_parameters
 
         else:
@@ -426,7 +431,8 @@ class Prepared:
             return Evaluation(float(value), tuple(float(x) for x in gradient), self.backend)
         return Evaluation(float(value), tuple(float(x) for x in gradient), self.backend,
                           float(error_bound),
-                          tuple(float(x) for x in gradient_bound) if gradients else None)
+                          tuple(float(x) for x in gradient_bound) if gradients else None,
+                          bool(informative))
 
     def evaluate(self, shifts: Sequence[float] | None = None, *, gradients: bool = True) -> Evaluation:
         if not isinstance(gradients, bool): raise ValueError('gradients must be a boolean')

@@ -23,6 +23,7 @@ from qiskit.primitives.containers import DataBin, PrimitiveResult, PubResult
 from qiskit.primitives.containers.estimator_pub import EstimatorPub
 from qiskit.primitives.primitive_job import PrimitiveJob
 
+from ._core._reference import DEFAULT_MAX_TERMS
 from .interop import ConversionError, Noise, _without_readout, from_qiskit, parse_observable, readout_expand
 
 
@@ -34,7 +35,7 @@ class Estimator(BaseEstimatorV2):
     """
 
     def __init__(self, *, backend="native", truncation=None, threads=1, noise=None, device=None,
-                 max_terms=1_000_000, default_precision=0.0):
+                 max_terms=DEFAULT_MAX_TERMS, default_precision=0.0):
         if device is not None and noise is None:
             noise = device.noise_model()  # a quantum_circuit_simulator.devices Device's gate and readout errors
         # Readout applies to the measured Paulis (any axis), not as a circuit channel.

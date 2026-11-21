@@ -60,6 +60,12 @@ def rotation(axis: str, theta: float) -> tuple[np.ndarray,np.ndarray]:
     return c*I - 1j*s*p, -0.5*s*I - 0.5j*c*p
 
 
+def rzz(theta: float) -> tuple[np.ndarray,np.ndarray]:
+    """exp(-i theta Z.Z / 2) and its derivative in theta; diagonal in the computational basis."""
+    zz = np.array([1., -1., -1., 1.])
+    return np.diag(np.exp(-0.5j*theta*zz)), np.diag(-0.5j*zz*np.exp(-0.5j*theta*zz))
+
+
 def fsim(theta: float, phi: float) -> tuple[np.ndarray,np.ndarray,np.ndarray]:
     c,s=math.cos(theta),math.sin(theta)
     phase=np.exp(-1j*phi)
@@ -73,6 +79,11 @@ def fsim(theta: float, phi: float) -> tuple[np.ndarray,np.ndarray,np.ndarray]:
 def cached_gate_ptm(name:str,theta:float,parametric:bool):
     if name in GATE1: return transfer(GATE1[name])
     if name in GATE2: return transfer(GATE2[name])
+    if name == 'RZZ':
+        u, du = rzz(theta)
+        matrix, derivative = transfer(u, du if parametric else None)
+        matrix.flags.writeable = derivative.flags.writeable = False
+        return matrix, derivative
     if name in ('RX','RY','RZ'):
         # Closed-form adjoint rotations avoid sixteen complex traces at every
         # new parameter angle. Order remains I, X, Z, Y throughout.
@@ -143,6 +154,11 @@ class Stage:
 
 
 MAX_PARAMETERS = 4096
+# Terms per observable cone. The default keeps an accidental exact run to about
+# 0.5 GB; beyond it the limit is memory, at about 0.5 KB per term at peak
+# (measured on 127 qubits, including the hash table's headroom and rehashing).
+DEFAULT_MAX_TERMS = 1_000_000
+MAX_TERMS = 1_000_000_000
 
 
 class ConeOverflow(RuntimeError):
@@ -150,7 +166,7 @@ class ConeOverflow(RuntimeError):
 
 
 class NoisyPauliCircuit:
-    def __init__(self,nqubits:int,nparams:int=0,max_terms:int=50000):
+    def __init__(self,nqubits:int,nparams:int=0,max_terms:int=DEFAULT_MAX_TERMS):
         if not 1<=nqubits<=16384 or not 0<=nparams<=MAX_PARAMETERS or max_terms<1:
             raise ValueError(f'nqubits 1..16384, nparams 0..{MAX_PARAMETERS}, max_terms>=1')
         self.nqubits,self.nparams,self.max_terms=nqubits,nparams,max_terms
@@ -184,11 +200,13 @@ class NoisyPauliCircuit:
             U,dU=rotation(name[1],theta)
         elif name=='FSIM' and len(wires)==2:
             U,dU,_=fsim(theta,0.)
+        elif name=='RZZ' and len(wires)==2:
+            U,dU=rzz(theta)
         else:
             raise ValueError(f'unsupported gate {name} or wires/parameter')
         t,d=cached_gate_ptm(name,theta,param!=-1)
         # Fixed rotations keep their angle too, so a circuit can be read back.
-        return self._stage(wires,t,d,param,name,theta if name in ('RX','RY','RZ','FSIM') else None,scale=scale)
+        return self._stage(wires,t,d,param,name,theta if name in ('RX','RY','RZ','RZZ','FSIM') else None,scale=scale)
 
     def unitary(self,wires:Sequence[int],matrix):
         """A fixed one- or two-qubit unitary; wire a is the least significant bit."""
@@ -237,7 +255,7 @@ class NoisyPauliCircuit:
         for st in self.stages:
             if st.param<0:out.stages.append(st);continue
             theta=st.angle+st.scale*float(deltas[st.param])
-            if st.name in ('RX','RY','RZ'):
+            if st.name in ('RX','RY','RZ','RZZ'):
                 mat,der=cached_gate_ptm(st.name,theta,True)
             elif st.name=='FSIM':
                 u,du,_=fsim(theta,st.phi)
@@ -391,7 +409,7 @@ def _transform(terms:dict, stage:Stage,nparams:int,limit:int, *, gradients=True,
 
 def load_chip_grid(rows:int,cols:int,depth:int=2,
                    gate:str='CZ',p2:float=.005,t:float=2e-7,T1:float=70e-6,T2:float=90e-6,
-                   readout:bool=True,nparams:int|None=None,max_terms:int=50000,active_qubits:int|None=None):
+                   readout:bool=True,nparams:int|None=None,max_terms:int=DEFAULT_MAX_TERMS,active_qubits:int|None=None):
     """Illustrative 2D brickwork; geometry and parameters are NOT chip calibration files."""
     if rows<1 or cols<1 or depth<0:raise ValueError('invalid grid')
     total=rows*cols

@@ -6,7 +6,7 @@
 - design new chips and compare them;
 - get every answer as JSON that says how it was computed and whether it is exact.
 
-**Release candidate 0.5.0rc1, by Mehdi Farza, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](CITATION.cff) and the [related work](docs/related-work.md) it builds on.
+**Release candidate 0.5.0rc2, by Mehdi Farza, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](CITATION.cff) and the [related work](docs/related-work.md) it builds on.
 
 ## What it does
 

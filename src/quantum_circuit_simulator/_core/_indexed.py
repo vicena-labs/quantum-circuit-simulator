@@ -22,7 +22,7 @@ from ._reference import ConeOverflow
 
 # Generator norm bound 2*||G|| of each parameterised stage, used to bound the
 # gradient of truncated terms: RX/RY/RZ = exp(-i t P/2), fSim's iSWAP block.
-_LIPSCHITZ = {'RX': 1., 'RY': 1., 'RZ': 1., 'FSIM': 2.}
+_LIPSCHITZ = {'RX': 1., 'RY': 1., 'RZ': 1., 'RZZ': 1., 'FSIM': 2.}
 
 
 @dataclass(slots=True)
@@ -59,9 +59,12 @@ class ConeGroups:
 
     def _bound_facts(self, value, gradient, value_bound, gradient_bound, truncated_terms):
         """Reported bounds: the accumulated bound is rigorous but can exceed the
-        trivial one, |exact - returned| <= max|exact| + |returned|; report the smaller."""
+        trivial one, |exact - returned| <= max|exact| + |returned|; report the smaller,
+        and say whether it says anything beyond the trivial bound."""
+        trivial = self.norm + abs(value)
         return dict(truncated_terms=int(truncated_terms),
-                    error_bound=min(float(value_bound), self.norm + abs(value)),
+                    error_bound=min(float(value_bound), trivial),
+                    bound_informative=bool(value_bound < trivial),
                     gradient_error_bound=tuple(
                         min(float(gradient_bound[j]), self.slope[j] + abs(gradient[j]))
                         for j in range(self.c.nparams)) if gradient_bound is not None else None)
@@ -248,7 +251,8 @@ class IndexedBatchPrepared(ConeGroups):
                 continue
             break
         if code == -1:
-            raise ConeOverflow(f'exact cone of observable index {failed[0]} exceeds cap {self.c.max_terms}')
+            kind = 'truncated' if self.truncating else 'exact'
+            raise ConeOverflow(f'{kind} cone of observable index {failed[0]} exceeds cap {self.c.max_terms}')
         if code:
             raise RuntimeError(f'exact cone {failed[0] if failed else "?"} status {code}')
         return list(out), stats

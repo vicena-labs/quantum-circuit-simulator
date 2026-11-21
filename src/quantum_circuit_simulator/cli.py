@@ -71,7 +71,7 @@ def main(argv=None):
         cmd.add_argument('--noise-1q', type=float, default=0., help='OpenQASM input: depolarizing after 1-qubit gates')
         cmd.add_argument('--noise-2q', type=float, default=0., help='OpenQASM input: depolarizing after 2-qubit gates')
         cmd.add_argument('--readout', help='OpenQASM input: "p01,p10" readout error on every wire')
-        cmd.add_argument('--max-terms', type=int, help='Term cap per cone (OpenQASM input; default 50000)')
+        cmd.add_argument('--max-terms', type=int, help='Term cap per cone, up to 1e9 (OpenQASM input; default 1000000; about 0.5 KB of memory per term)')
         cmd.add_argument('--device', help='OpenQASM input: a chip from the catalogue or a .json file; applies '
                                           'its noise and checks its connectivity')
         cmd.add_argument('--device-param', action='append', default=[], help='Catalogue parameter, e.g. rows=6')
@@ -93,7 +93,12 @@ def main(argv=None):
                              help='Truncate terms below this fraction of the observable l1 norm')
             cmd.add_argument('--max-weight', type=int, default=None,
                              help='Truncate terms acting on more open wires than this')
-            cmd.add_argument('--threads', type=int, default=1, help='Threads for independent cone groups')
+            cmd.add_argument('--converge', type=float, default=None, metavar='TOLERANCE',
+                             help='With --min-coefficient: tighten it half a decade at a time until two '
+                                  'successive values agree within TOLERANCE, the term cap or the timeout')
+            cmd.add_argument('--levels', type=int, default=5, help='Most truncation levels for --converge')
+            cmd.add_argument('--threads', type=int, default=_cores(),
+                             help='Threads for independent cone groups (default: every available core)')
     sw = sub.add_parser('sweep', help='Compile and solve over chips, noise scales and sizes; one row per point')
     sw.add_argument('input', nargs='?', help='OpenQASM file; or use --family')
     sw.add_argument('--family', help='Built-in circuit family: ghz, hardware-efficient, qaoa-ring, ising-trotter')
@@ -193,6 +198,13 @@ def main(argv=None):
         options = {'threads': getattr(args, 'threads', 1), 'schedule': getattr(args, 'schedule', False)}
         if getattr(args, 'min_coefficient', None) is not None or getattr(args, 'max_weight', None) is not None:
             options['truncation'] = {'min_coefficient': args.min_coefficient or 0., 'max_weight': args.max_weight}
+        if getattr(args, 'converge', None) is not None:
+            if not args.min_coefficient or not 0 < args.converge < 1 or not 2 <= args.levels <= 12:
+                raise _UsageError('--converge needs --min-coefficient, a tolerance in (0, 1) and 2 to 12 --levels',
+                                  'For example: --min-coefficient 1e-4 --converge 0.01')
+            # Leave the worker time to report the finest finished level before the deadline.
+            options['converge'] = {'tolerance': args.converge, 'levels': args.levels,
+                                   'seconds': 0.8 * args.timeout}
         env = dict(os.environ)
         for key in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS'):
             env[key] = '1'
@@ -211,13 +223,22 @@ def main(argv=None):
         print(json.dumps(output, allow_nan=False, separators=(',', ':'))); return 0
     except subprocess.TimeoutExpired:
         return emit_error('Timeout', 'worker exceeded wall deadline and was terminated', 124,
-                          hint='Run `quantum-circuit-simulator plan` first; raise --timeout, or approximate with '
-                               '--min-coefficient 1e-4.')
+                          hint='Run `quantum-circuit-simulator plan` first; raise --timeout (up to 3600), or '
+                               'approximate with --min-coefficient 1e-3 --converge 0.01. With --converge, the first '
+                               'level must finish within the timeout; start it at a larger threshold.')
     except _UsageError as exc:
         return emit_error('UsageError', str(exc), hint=exc.hint)
     except (OSError, ValueError, KeyError) as exc:
         return emit_error(type(exc).__name__, str(exc), hint='Check the input path and format; '
                           'see `quantum-circuit-simulator schema`.')
+
+
+def _cores():
+    """CPUs this process may use: its affinity where the platform reports one, else the CPU count."""
+    try:
+        return max(1, min(256, len(os.sched_getaffinity(0))))
+    except AttributeError:
+        return max(1, min(256, os.cpu_count() or 1))
 
 
 class _UsageError(Exception):

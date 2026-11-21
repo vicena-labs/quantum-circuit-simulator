@@ -29,7 +29,7 @@ def _is_noise(stage):
 
 
 def _clifford_gate(stage):
-    if stage.name in ("RX", "RY", "RZ"):
+    if stage.name in ("RX", "RY", "RZ", "RZZ"):
         return abs(stage.angle / (math.pi / 2) - round(stage.angle / (math.pi / 2))) < 1e-9
     if stage.name == "FSIM":
         return False

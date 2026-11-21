@@ -20,10 +20,12 @@ import operator
 import re
 from dataclasses import dataclass, field
 
+from ._core._reference import DEFAULT_MAX_TERMS
 from .api import Circuit
 
 NATIVE_ONE = {"h", "sx", "x", "y", "z"}
 ROTATIONS = {"rx", "ry", "rz"}
+ANGLED = ("RX", "RY", "RZ", "RZZ")   # native ops that carry an angle
 # Gates the converter decomposes itself; Qiskit transpiles anything else to these.
 SUPPORTED_GATES = sorted(NATIVE_ONE | ROTATIONS | {
     "id", "sxdg", "s", "sdg", "t", "tdg", "p", "u1", "u2", "u3", "u", "r", "cx", "cy", "cz",
@@ -159,7 +161,7 @@ class Converted:
 
 
 # ---------------------------------------------------------------- circuits
-def from_qiskit(circuit, *, values=None, noise=None, max_terms=1_000_000):
+def from_qiskit(circuit, *, values=None, noise=None, max_terms=DEFAULT_MAX_TERMS):
     """Convert a Qiskit QuantumCircuit.
 
     With values=None, Qiskit Parameters become shared parameters when they
@@ -229,7 +231,7 @@ def _binding(circuit, values):
     return dict(zip(params, map(float, values)))
 
 
-def from_qasm(text, *, noise=None, max_terms=1_000_000):
+def from_qasm(text, *, noise=None, max_terms=DEFAULT_MAX_TERMS):
     """Convert OpenQASM. OpenQASM 2 needs no dependencies; OpenQASM 3 needs Qiskit."""
     if re.search(r"OPENQASM\s+3", text):
         try:
@@ -243,15 +245,19 @@ def from_qasm(text, *, noise=None, max_terms=1_000_000):
 
 def _build(n, instructions, noise, max_terms):
     """Decompose source instructions into native ops, mapping shared parameters."""
-    ops, params = _lower(instructions, noise)
+    ops, params = _lower(instructions, noise, direct=True)
     return _emit(n, ops, params, noise.readout if noise else None, max_terms)
 
 
-def _lower(instructions, noise=None):
+def _lower(instructions, noise=None, direct=False):
     """Native ops (prim, wires, base, parameter index, scale) and the shared parameters.
 
     prim is a native gate name, or "DEPOL" with its probability as base when
     `noise` adds gate errors. The compiler routes these ops before emitting.
+    direct=True keeps ZZ-type rotations as one RZZ stage instead of a chip's
+    CZ decomposition: the same operator in one stage instead of seven, which
+    makes Pauli propagation several times faster. Only the compiler needs the
+    chip's own gates.
     """
     measured = set()
     ops, params = [], []
@@ -270,7 +276,8 @@ def _lower(instructions, noise=None):
         if name not in _DECOMPOSE:
             raise ConversionError(f"unsupported gate {name!r}",
                                   "install Qiskit so unknown gates are transpiled, or use: " + ", ".join(SUPPORTED_GATES))
-        for prim, wires, angle in _DECOMPOSE[name](qubits, angles):
+        decompose = _DIRECT.get(name, _DECOMPOSE[name]) if direct else _DECOMPOSE[name]
+        for prim, wires, angle in decompose(qubits, angles):
             ops.append((prim, list(wires), angle))
         if len(qubits) >= 2:
             # Marks the end of a multi-qubit source gate: the compiler applies the gate's error here,
@@ -283,7 +290,7 @@ def _lower(instructions, noise=None):
     # Map symbolic angles to shared parameters, or fail with a clear request for values.
     resolved = []
     for prim, wires, angle in ops:
-        if prim in ("RX", "RY", "RZ"):
+        if prim in ANGLED:
             try:
                 base, source, scale = _angle(angle)
             except _NotShareable:
@@ -313,7 +320,7 @@ def _emit(n, ops, params, readout, max_terms):
             c.depolarize(wires, base)
         elif prim == "RELAX":
             c.relax(wires[0], *base)
-        elif prim in ("RX", "RY", "RZ"):
+        elif prim in ANGLED:
             c.gate(prim, wires, base, index, scale if index >= 0 else 1.0)
         else:
             c.gate(prim, wires)
@@ -403,6 +410,16 @@ _DECOMPOSE = {
                        + _cx(q[0], q[1]) + [("RZ", [q[1]], _half(a[0]))],
 }
 _DECOMPOSE["cu1"] = _DECOMPOSE["cp"]
+
+# Two-qubit rotations as one RZZ stage, in their own basis frames; used when no chip's gate set applies.
+_DIRECT = {
+    "rzz": lambda q, a: [("RZZ", q, a[0])],
+    "rxx": lambda q, a: [("H", [q[0]], None), ("H", [q[1]], None), ("RZZ", q, a[0]),
+                         ("H", [q[0]], None), ("H", [q[1]], None)],
+    "ryy": lambda q, a: [("RX", [q[0]], HALF_PI), ("RX", [q[1]], HALF_PI), ("RZZ", q, a[0]),
+                         ("RX", [q[0]], -HALF_PI), ("RX", [q[1]], -HALF_PI)],
+    "rzx": lambda q, a: [("H", [q[1]], None), ("RZZ", q, a[0]), ("H", [q[1]], None)],
+}
 
 
 def _crz(c, t, theta):
@@ -678,7 +695,7 @@ def _real_coefficient(c):
 
 # ---------------------------------------------------------------- one call
 def expectation(circuit, observable, *, values=None, gradients=False, backend="native", truncation=None,
-                noise=None, device=None, threads=1, max_terms=1_000_000):
+                noise=None, device=None, threads=1, max_terms=DEFAULT_MAX_TERMS):
     """One-call expectation value of an observable on a circuit.
 
     circuit may be a `Circuit`, a Qiskit QuantumCircuit or OpenQASM
@@ -701,7 +718,7 @@ def expectation(circuit, observable, *, values=None, gradients=False, backend="n
     return plan.evaluate(shifts, gradients=gradients)
 
 
-def convert(circuit, *, noise=None, max_terms=1_000_000, values=None):
+def convert(circuit, *, noise=None, max_terms=DEFAULT_MAX_TERMS, values=None):
     """A Converted from a Circuit, a Qiskit circuit or OpenQASM text.
 
     For a Qiskit circuit, values are bound numerically only when its

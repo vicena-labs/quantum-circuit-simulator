@@ -89,6 +89,8 @@ def main():
         # Options from the CLI parent: threads and an optional truncation.
         from .api import Truncation
         truncation=Truncation(**options['truncation']) if 'truncation' in options else None
+        if 'converge' in options:
+            return _converge(c, obs, vecs, gradients, options, compile_report, device_check, data, start)
         t=time.perf_counter()
         plan=c.prepare(obs,backend=backend,truncation=truncation,threads=options.get('threads',1))
         preparation=time.perf_counter()-t
@@ -108,5 +110,25 @@ def main():
         print(json.dumps({'ok':False,'error':{'type':type(exc).__name__,'message':str(exc),
                                               'hint':hint_for(exc)}}),flush=True)
         return 2
+
+def _converge(c, obs, vecs, gradients, options, compile_report, device_check, data, start):
+    """Tighten the truncation level by level until successive values agree."""
+    from .experiments import ladder, refine
+    settings = options['converge']
+    t = time.perf_counter()
+    results, report = refine(c, obs, vecs, ladder(options['truncation']['min_coefficient'], settings['levels']),
+                             tolerance=settings['tolerance'], seconds=settings['seconds'],
+                             gradients=gradients, threads=options.get('threads', 1))
+    if results is None:
+        from .api import ConeOverflow
+        raise ConeOverflow(report['stopped'])
+    output = {'backend': 'native', 'requested_backend': 'native', 'n_qubits': c.n_qubits,
+              'n_parameters': c.n_parameters, 'results': [x.as_dict() for x in results],
+              'gradients': gradients, 'convergence': report,
+              **({'device': device_check} if device_check else {}),
+              **({'compile': {k: v for k, v in compile_report.items() if k != 'schedule'}} if compile_report else {}),
+              'timings': {'evaluate_batch_seconds': time.perf_counter() - t}}
+    return emit('result', output, data, start, solver='native')
+
 
 if __name__=='__main__':raise SystemExit(main())

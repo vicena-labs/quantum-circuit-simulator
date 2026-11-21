@@ -25,7 +25,7 @@ from functools import reduce
 
 import numpy as np
 
-from ._core._reference import GATE1, GATE2, X, Y, Z, fsim, rotation
+from ._core._reference import GATE1, GATE2, X, Y, Z, fsim, rotation, rzz
 
 MAX_STATEVECTOR_QUBITS = 28
 MAX_DENSITY_QUBITS = 12
@@ -81,6 +81,9 @@ def _unitary(stage):
         return GATE2[name], None
     if name in ("RX", "RY", "RZ"):
         u, du = rotation(name[1], stage.angle)
+        return u, du * stage.scale
+    if name == "RZZ":
+        u, du = rzz(stage.angle)
         return u, du * stage.scale
     if name == "FSIM":
         u, du, _ = fsim(stage.angle, stage.phi or 0.0)

@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from ._core._reference import DEFAULT_MAX_TERMS
 from .api import ConeOverflow, Truncation
 from .interop import Angle, ConversionError, Program, convert
 
@@ -74,7 +75,7 @@ class Objective:
     """
 
     def __init__(self, circuit, hamiltonian, *, device=None, noise_scale=1.0, layout="greedy", router="greedy",
-                 tolerance=1e-5, max_terms=1_000_000):
+                 tolerance=1e-5, max_terms=DEFAULT_MAX_TERMS):
         from .hamiltonians import load
         self.hamiltonian = load(hamiltonian)
         self.order = list(getattr(circuit, "parameters", None) or [])

@@ -37,7 +37,7 @@ def capabilities():
             "openqasm3": "needs `pip install qiskit qiskit-qasm3-import`",
             "qiskit": "quantum_circuit_simulator.interop.from_qiskit and quantum_circuit_simulator.estimator.Estimator (Qiskit Estimator V2)",
         },
-        "native_gates": ["H", "SX", "X", "Y", "Z", "RX", "RY", "RZ", "CZ", "ECR", "FSIM", "UNITARY (any fixed 1- or 2-qubit matrix)"],
+        "native_gates": ["H", "SX", "X", "Y", "Z", "RX", "RY", "RZ", "RZZ", "CZ", "ECR", "FSIM", "UNITARY (any fixed 1- or 2-qubit matrix)"],
         "devices": "chip catalogue: `quantum-circuit-simulator devices`; describe one with `quantum-circuit-simulator device NAME`; "
                    "apply a chip's noise and check its connectivity with --device on run and plan; "
                    "route onto it and simulate gate errors, idle T1/T2 and readout with --compile, "
@@ -73,12 +73,14 @@ def capabilities():
                        "wire 0), or JSON terms {coefficient, pauli: {wire: axis}}",
         "limits": {"logical_qubits": 16384, "wires_per_cone": 256, "shared_parameters": 4096,
                    "observable_terms": 65536, "parameter_vectors_per_request": 128,
-                   "max_terms_per_cone": "1..1000000; exact mode refuses beyond it instead of approximating"},
+                   "max_terms_per_cone": "1..1000000000, default 1000000, about 0.5 KB of memory per term; exact mode refuses beyond it instead of approximating"},
         "backends": BACKENDS,
         "truncation": {"flags": "--min-coefficient F (fraction of the observable l1 norm), --max-weight N",
                        "result_fields": "error_bound and, with gradients, gradient_error_bound: rigorous "
-                                        "bounds on |exact - returned|, often loose; check convergence by "
-                                        "tightening F tenfold"},
+                                        "bounds on |exact - returned|, often loose; bound_informative is false "
+                                        "when the bound is no tighter than the trivial one",
+                       "convergence": "--converge TOL tightens F half a decade at a time (up to --levels) "
+                                      "until successive values agree within TOL, and reports every level"},
         "not_supported": ["mid-circuit measurement", "reset", "classical control",
                           "non-Pauli observables", "initial states other than |0...0>"],
         "exit_codes": EXIT_CODES,
@@ -92,7 +94,7 @@ def schema():
                            "pauli": {"type": "object", "additionalProperties": {"enum": ["I", "X", "Y", "Z"]},
                                      "description": "decimal wire index -> axis; empty means identity"}}}
     common = {"schema_version": {"const": 1},
-              "max_terms": {"type": "integer", "minimum": 1, "maximum": 1000000, "default": 50000},
+              "max_terms": {"type": "integer", "minimum": 1, "maximum": 1000000000, "default": 1000000},
               "parameter_vectors": {"type": "array", "maxItems": 128, "items": {"type": "array",
                                     "items": {"type": "number"}},
                                     "description": "additive shifts per shared parameter (JSON form) or "
@@ -218,9 +220,16 @@ def hint_for(exc):
         if "qubits" in text:
             return "The light cone is too wide for exact propagation: shorten the circuit or use observables " \
                    "with smaller support."
-        return "Exact propagation exceeded the term cap. Rerun with --min-coefficient 1e-4 (approximate, with " \
-               "a rigorous error_bound), then 1e-5 to check convergence; or --backend auto, which falls back " \
-               "to dense for cones of at most 6 wires; or raise max_terms (at most 1000000)."
+        if text.startswith("truncated"):
+            return "The truncated expansion exceeded the term cap. Raise --max-terms (up to 1000000000, about " \
+                   "0.5 KB of memory per term, so check free memory) or use a larger --min-coefficient. With --converge, " \
+                   "the finest level that finished is still reported."
+        return "Exact propagation exceeded the term cap. Raise --max-terms (up to 1000000000, about 0.5 KB " \
+               "of memory per term), or approximate with --min-coefficient 1e-4 --converge 0.01 --timeout 600, which " \
+               "tightens the truncation half a decade at a time and reports every level, its rigorous " \
+               "error_bound and the change between levels. When bound_informative is false, the change between " \
+               "levels is the only evidence for the value. --backend auto falls back to dense for cones of at " \
+               "most 6 wires."
     if "truncation" in text:
         return "Truncation works with --backend native, graph or auto."
     if "unsupported" in text or "operation" in text:

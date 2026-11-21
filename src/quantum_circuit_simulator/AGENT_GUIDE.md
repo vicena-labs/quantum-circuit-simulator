@@ -70,7 +70,7 @@ Built-in families, each with its own observable:
 - `qaoa-ring` (MaxCut);
 - `ising-trotter`.
 
-The solver is chosen per point: exact sparse propagation, then the state vector (noise-free, up to 24 qubits) or density matrix (noisy, up to 10 qubits), then exact dense for cones of at most 6 wires, then truncation at 1e-4 and 1e-5. A truncated row has `exact: false`, an `error_bound`, and the `convergence_change` between the two tolerances. A chip too small for a size gives a row with `error` instead of stopping the sweep. In Python: `from quantum_circuit_simulator.experiments import sweep, solve`.
+The solver is chosen per point: exact sparse propagation, then the state vector (noise-free, up to 24 qubits) or density matrix (noisy, up to 10 qubits), then exact dense for cones of at most 6 wires, then truncation at 1e-4 and 1e-5. A truncated row has `exact: false`, an `error_bound` with `bound_informative`, and the `convergence_change` between the two tolerances. A chip too small for a size gives a row with `error` instead of stopping the sweep. In Python: `from quantum_circuit_simulator.experiments import sweep, solve`.
 
 ## Designing chips
 
@@ -140,8 +140,8 @@ Every result has `schema` (`quantum-circuit-simulator-<kind>/1`) and `provenance
 ## Recipe
 
 1. **Plan.** `quantum-circuit-simulator plan`: if `exact_guaranteed` is true, exact evaluation cannot exceed the term cap.
-2. **Run exactly.** `quantum-circuit-simulator run`. A `ConeOverflow` error means the exact expansion exceeded the cap. It never returns a wrong answer.
-3. **Truncate if needed.** Rerun with `--min-coefficient 1e-4`, then `1e-5`. Accept the value once it stops changing between the two. Each result's `error_bound` is a rigorous worst case on |exact − returned|; it is usually far larger than the real error, so the convergence check is the practical test.
+2. **Run exactly.** `quantum-circuit-simulator run`. A `ConeOverflow` error means the exact expansion exceeded the cap (default 1,000,000 terms per cone; `--max-terms` raises it, at about 0.5 KB of memory per term). It never returns a wrong answer.
+3. **Truncate if needed.** Rerun with `--min-coefficient 1e-4 --converge 0.01 --timeout 900`. The threshold tightens half a decade per level until two successive values agree within 0.01, the term cap stops it or the time runs out, and `convergence` reports every level. Each result's `error_bound` is a rigorous worst case on |exact − returned|. For deep circuits it is often no tighter than the trivial bound, and `bound_informative` is then false: the change between levels is the only evidence, and it is empirical, not a guarantee. Never stop at the first overflow: raise `--max-terms`, tighten the threshold, and report what converged.
 4. **Sweep parameters.** For many parameter vectors of one circuit, use `--backend graph`. It compiles once and is much faster per vector; put up to 128 vectors in one JSON request's `parameter_vectors`.
 5. **Small cones.** When every cone has at most 6 wires, `--backend dense` is exact regardless of depth.
 
@@ -149,7 +149,8 @@ Every result has `schema` (`quantum-circuit-simulator-<kind>/1`) and `provenance
 
 - `results[i].value`: the expectation of the whole weighted observable at parameter vector i.
 - `results[i].gradient`: d value / d parameter, one entry per shared parameter.
-- `results[i].error_bound` and `gradient_error_bound`: present only for truncated runs.
+- `results[i].error_bound` and `gradient_error_bound`: present only for truncated runs; `bound_informative` is false when the bound says nothing beyond |exact| ≤ ‖O‖₁.
+- `convergence` (with `--converge`): each level's threshold, values, bounds, peak terms and seconds; `change` between the last two; `converged`; and why it `stopped`.
 - `backend`: the method actually used. `diagnostics.fallback_reason` explains any fallback.
 - `diagnostics`: cone sizes and term counts. `numerics`: the cutoffs in force.
 
@@ -164,6 +165,27 @@ print(r.value, r.gradient, r.error_bound)
 
 As a drop-in Qiskit primitive: `from quantum_circuit_simulator.estimator import Estimator`, then use it wherever a Qiskit `EstimatorV2` is expected. To simulate on a chip, use `from quantum_circuit_simulator import devices`, then `chip = devices.get("all-to-all-ions", n=20)`, and pass `device=chip` to `expectation` or `Estimator`.
 
+On a real chip, in a notebook:
+
+```python
+from quantum_circuit_simulator import devices
+from quantum_circuit_simulator.compiler import compile_circuit
+from quantum_circuit_simulator.statevector import sample_compiled
+chip = devices.get("ibm_fez")                              # calibration date: chip.parameters["hardware"]
+compiled = compile_circuit(open("circuit.qasm").read(), chip, layout="trivial", noise_scale=1.0)
+print(compiled.report["swaps"], compiled.report["two_qubit_gates"])
+print(compiled.expectation("Z0*Z1").value)                 # exact noisy expectation
+counts = sample_compiled(compiled, shots=4096, seed=1)["counts"]
+```
+
+Truncating with a convergence ladder, from Python:
+
+```python
+from quantum_circuit_simulator.experiments import ladder, refine
+results, report = refine(circuit, terms, [None], ladder(1e-4, levels=5), tolerance=0.01, seconds=900)
+print(results[0].value, report["change"], report["converged"], report["stopped"])
+```
+
 For repeated evaluation, convert once and reuse the plan:
 
 ```python
@@ -177,5 +199,5 @@ for values in sweep:
 ## Verify before reporting
 
 - **Cross-check small cases:** on a reduced instance (at most about 20 qubits), `solve(circuit, terms, cross_check=True)` compares Pauli propagation with state simulation and reports `cross_check.agrees`; or compare against `--backend python` or `dense`.
-- **Report truncation fully:** for truncated results, state the threshold and the convergence check, not only the bound.
+- **Report truncation fully:** for truncated results, state the threshold and the convergence check, not only the bound. When `bound_informative` is false, say the value rests on convergence alone.
 - **Mind the noise convention:** noise probabilities are total non-identity Pauli error probabilities. Qiskit Aer's depolarizing parameter λ equals p·4^k/(4^k−1) for k wires.

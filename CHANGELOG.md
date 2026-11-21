@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0rc2 (release candidate, not yet published) — converging deep truncated runs
+
+- Add `--converge TOLERANCE` to `run` (with `--min-coefficient` and `--levels`) and `experiments.refine`: the truncation threshold tightens half a decade per level until two successive values agree within the tolerance, the term cap stops it or the time budget runs out, and `convergence` reports every level's threshold, values, bounds, peak terms and seconds. The finest finished level is kept when a later one overflows. `solve` uses the same path.
+- Truncated results report `bound_informative`: false when the rigorous `error_bound` is no tighter than the trivial bound, as for IBM's 20-step kicked Ising circuit, where only convergence across levels supports the value.
+- Raise the term cap's ceiling from 1,000,000 to 1,000,000,000 terms per cone (memory is the real limit, at about 0.5 KB per term at peak) and make 1,000,000 the default everywhere; the command line and JSON requests defaulted to 50,000.
+- `rzz`, `rxx`, `ryy` and `rzx` become one native `RZZ` stage (in their basis frames) when a circuit is not compiled onto a chip, instead of seven stages through CZ, and `Circuit.gate("RZZ", ...)` takes a shared parameter on every backend. The same operator in fewer stages makes Pauli propagation of IBM's 20-step kicked Ising circuit about five times faster. Compiled circuits keep the chip's own gates; the compiler's ZZ crosstalk also uses one stage.
+- Measured on IBM's 20-step kicked Ising circuit on `ibm_kyiv` (qubit 62, one core, Apple M-series): at θ = 0.2 the value converges to 0.9788 (change 0.0006) in under a second, and at θ = 0.4 to 0.8360 (successive levels 0.8347, 0.8361, 0.8360). At θ = 0.6 the levels still move by 0.05 at 5 million terms, and near π/2 the first level already needs over 10 million terms: those angles need far more terms than one laptop holds, as the converged published simulations also found, and the ladder reports them as unconverged.
+- An overflow while truncating now says `truncated cone` rather than `exact cone`, and the hints name `--max-terms` and `--converge` explicitly.
+- `run --threads` defaults to every core the process may use.
+- The agent guide gains Python examples for compiling onto a real chip, exact noisy expectations, sampling and the convergence ladder.
+
 ## 0.5.0rc1 (release candidate, not yet published) — algorithm development, states and sampling, output contracts
 
 - Bundle real chips: 65 IBM chips from the calibration snapshots in qiskit-ibm-runtime and Google's Rainbow, Weber and Willow Pink from cirq-google (both Apache-2.0), each with per-qubit T1, T2, readout and gate errors, per-coupler errors, gate durations, coordinates and, for IBM, qubit frequencies and anharmonicities. `devices.get("ibm_fez")`; `devices` lists them with snapshot dates. `tools/import_external.py` regenerates the data.

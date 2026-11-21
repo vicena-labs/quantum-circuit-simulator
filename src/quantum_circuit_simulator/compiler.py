@@ -35,6 +35,7 @@ import math
 from collections import Counter, deque
 from dataclasses import dataclass, field
 
+from ._core._reference import DEFAULT_MAX_TERMS
 from .api import Circuit
 from .interop import (GATE_END, ConversionError, Converted, _DECOMPOSE, _emit, _lower, parse_observable, readout_expand,
                       source_instructions)
@@ -73,7 +74,7 @@ class Compiled:
 
 
 def compile_circuit(circuit, device, *, layout="greedy", router="greedy", noise=True, idle_noise=True,
-                    noise_scale=1.0, values=None, max_terms=1_000_000, gate_model="thermal"):
+                    noise_scale=1.0, values=None, max_terms=DEFAULT_MAX_TERMS, gate_model="thermal"):
     """Compile OpenQASM text, a Qiskit circuit or a gates-only `Circuit` onto `device`.
 
     gate_model "thermal" (default) gives each gate T1/T2 relaxation for its duration and a
@@ -432,8 +433,7 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
         """Apply a pair's ZZ phase accumulated up to `until`."""
         elapsed = until - zz_clock[pair]
         if elapsed > 0:
-            for z_prim, z_wires, z_angle in _DECOMPOSE["rzz"](list(pair), [zz_rate * elapsed]):
-                out.append((z_prim, list(z_wires), z_angle, -1, 1))  # coherent error, not a gate
+            out.append(("RZZ", list(pair), zz_rate * elapsed, -1, 1))  # coherent error, not a gate
             zz_clock[pair] = until
             entry = couplers.setdefault(f"{pair[0]}-{pair[1]}", {})
             entry["zz_phase_rad"] = entry.get("zz_phase_rad", 0.0) + zz_rate * elapsed

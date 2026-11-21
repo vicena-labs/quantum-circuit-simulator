@@ -126,13 +126,16 @@ class NativePrepared:
             self._dptm[index, bb] = -sc
             self._dptm[index, ab] = sign * cc
             self._dptm[index, ba] = -sign * cc
-        from ._reference import transfer, fsim
+        from ._reference import cached_gate_ptm, transfer, fsim
         for i in self._other:
             s = self.c.stages[i]
-            if s.name != 'FSIM':
+            theta = s.angle + s.scale * float(deltas[s.param])
+            if s.name == 'RZZ':
+                t, dt = cached_gate_ptm('RZZ', theta, True)
+            elif s.name == 'FSIM':
+                t, dt = transfer(*fsim(theta, s.phi)[:2])
+            else:
                 raise ValueError('unsupported parameter rebind')
-            u, du, _ = fsim(s.angle + s.scale * float(deltas[s.param]), s.phi)
-            t, dt = transfer(u, du)
             self._ptm[i, :t.size] = t.ravel()
             self._dptm[i, :dt.size] = s.scale * dt.ravel()
         return self

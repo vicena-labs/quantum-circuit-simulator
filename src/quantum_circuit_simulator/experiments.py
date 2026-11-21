@@ -102,27 +102,74 @@ def _state_method(circuit, terms, shifts, gradients, reasons):
 
 
 def _truncated(circuit, terms, shifts, gradients, tolerances, reasons):
-    values = []
-    for tolerance in tolerances:
-        try:
-            result = circuit.prepare(terms, truncation=Truncation(tolerance)).evaluate(shifts, gradients=gradients)
-            values.append((tolerance, result))
-        except ConeOverflow as exc:
-            reasons.append(f"truncated at {tolerance:g}: {exc}")
-            break
-    if not values:
-        raise ConeOverflow("no method fits: " + "; ".join(reasons))
-    tolerance, result = values[-1]
+    results, report = refine(circuit, terms, [shifts], tolerances, gradients=gradients)
+    if results is None:
+        raise ConeOverflow("no method fits: " + "; ".join(reasons + [report["stopped"]]))
+    result = results[0]
+    tolerance = report["levels"][-1]["min_coefficient"]
     out = _row(result, f"native truncated at {tolerance:g}", False, reasons, gradients)
     out["error_bound"] = result.error_bound
+    out["bound_informative"] = result.bound_informative
     if gradients:
         out["gradient_error_bound"] = list(result.gradient_error_bound)
-    if len(values) > 1:
-        out["convergence_change"] = abs(values[-1][1].value - values[-2][1].value)
-    else:
-        out["convergence_change"] = None
-        reasons.append("only one tolerance fitted the term cap; convergence is unchecked")
+    out["convergence_change"] = report["change"]
+    if report["change"] is None:
+        reasons.append(f"only one tolerance fitted: {report['stopped']}; convergence is unchecked")
     return out
+
+
+def refine(circuit, terms, vectors, thresholds, *, tolerance=None, seconds=None, gradients=False, threads=1):
+    """Evaluate at each truncation threshold in turn, tightest last.
+
+    Stops early when the last two levels agree within `tolerance` (for every
+    parameter vector), when the next level would not finish within `seconds`
+    (predicted from how the previous levels grew), or when a level exceeds the
+    term cap; the finest completed level is kept. Returns that level's
+    evaluations (None if no level completed) and a report: each level's
+    threshold, values, bounds, peak terms and seconds; the change between the
+    last two levels; whether it is within tolerance; and why it stopped. When
+    the rigorous bounds are uninformative, the change is the evidence for the
+    value, and it is empirical, not a guarantee.
+    """
+    levels, best, stopped, started = [], None, "all thresholds evaluated", time.perf_counter()
+    for threshold in thresholds:
+        if seconds is not None and levels:
+            last = levels[-1]["seconds"]
+            growth = last / max(levels[-2]["seconds"], 1e-3) if len(levels) > 1 else 6.0
+            if time.perf_counter() - started + last * max(growth, 1.0) > seconds:
+                stopped = f"the next threshold, {threshold:.3g}, would exceed the {seconds:g} s budget"
+                break
+        t = time.perf_counter()
+        try:
+            plan = circuit.prepare(terms, truncation=Truncation(threshold), threads=threads)
+            results = plan.evaluate_many(vectors, gradients=gradients)
+        except ConeOverflow as exc:
+            stopped = f"threshold {threshold:.3g}: {exc}"
+            break
+        best = results
+        levels.append({"min_coefficient": threshold, "values": [r.value for r in results],
+                       "error_bounds": [r.error_bound for r in results],
+                       "bounds_informative": all(r.bound_informative for r in results),
+                       "peak_terms": plan.diagnostics.get("max_single_cone_terms"),
+                       "seconds": time.perf_counter() - t})
+        if tolerance is not None and _change(levels) is not None and _change(levels) <= tolerance:
+            stopped = "converged"
+            break
+    change = _change(levels)
+    return best, {"levels": levels, "tolerance": tolerance, "change": change,
+                  "converged": change is not None and tolerance is not None and change <= tolerance,
+                  "stopped": stopped}
+
+
+def _change(levels):
+    if len(levels) < 2:
+        return None
+    return max(abs(a - b) for a, b in zip(levels[-1]["values"], levels[-2]["values"]))
+
+
+def ladder(start, levels=5):
+    """Truncation thresholds start, start/sqrt(10), start/10, ...: half a decade per level."""
+    return [start * 10 ** (-k / 2) for k in range(levels)]
 
 
 def _cross_check(circuit, terms, shifts, first):
