@@ -33,7 +33,7 @@
 
 Or type your own question at [vicena.ai](https://vicena.ai).
 
-**Release candidate 0.5.0rc3, by Mehdi Farza at Vicena Labs, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](#citing-and-attribution) and the [related work](docs/related-work.md) it builds on.
+**Release candidate 0.5.0rc4, by Mehdi Farza at Vicena Labs, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](#citing-and-attribution) and the [related work](docs/related-work.md) it builds on.
 
 ## What it does
 
@@ -360,7 +360,7 @@ If you use Quantum Circuit Simulator in a publication, a thesis, a report or a p
 @software{quantum_circuit_simulator,
   author       = {Farza, Mehdi and {Vicena Labs}},
   title        = {Quantum Circuit Simulator: noisy circuits, algorithms and chip design with the Pauli-cone method},
-  version      = {0.5.0rc3},
+  version      = {0.5.0rc4},
   year         = {2026},
   publisher    = {Vicena Labs},
   url          = {https://github.com/vicena-labs/quantum-circuit-simulator},

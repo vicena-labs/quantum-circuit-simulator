@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0rc3 (release candidate, not yet published) — research workflows and topological chips
+## 0.5.0rc4 (release candidate, not yet published) — research workflows and topological chips
 
 - Add `chemistry`: PySCF molecules (named or by geometry) with active spaces, Jordan–Wigner, Bravyi–Kitaev and parity mappings, Z2 tapering, Hartree–Fock states and UCCSD; optional extra `chemistry`.
 - Add `mitigation`: propagated noise absorption (`pna`), probabilistic error cancellation (`pec`, `pec_overhead`) and readout correction (`readout_correct`, `mitigated_counts`).
@@ -9,6 +9,7 @@
 - Add `resources`: T counts with rotation synthesis and surface-code estimates of distance, factories, physical qubits and runtime, from tetron chips' own error rates where given.
 - Add `baselines` (brute force, simulated annealing, Goemans–Williamson) and `algorithms.qaoa(init="fixed-angle" | previous result | angles)`.
 - Add Microsoft's Majorana 2 (`microsoft_majorana_2`) and Majorana tetron arrays (`tetron-array`) as a topological family: measurement-based gate costs, magic states and synthesized rotations in the compiler, parity-flip noise instead of T1/T2, every value cited or labelled an assumption, tetron CAD at the published dimensions.
+- The tag v0.5.0rc3 failed the source hygiene check on the README figures; 0.5.0rc4 is the same release with the check accepting them.
 - CAD writes 3D STL models; the README shows chip figures, exploded 3D views, a "Try it in Vicena" link and how to cite the package.
 
 ## 0.5.0rc2 (release candidate, not yet published) — converging deep truncated runs
