@@ -117,7 +117,10 @@ def scan_tree(root: Path, *, tracked_only: bool = False) -> dict:
         if file.suffix.lower() in BINARY_SUFFIXES or file.name.endswith('.egg-info'):
             findings.append({'file': rel.as_posix(), 'reason': 'binary_or_key_material'})
             continue
-        if file.suffix.lower() not in TEXT_SUFFIXES and file.name not in {'.gitignore', 'MANIFEST.in', 'LICENSE', 'NOTICE'}:
+        # Bundled data is gzip-compressed JSON: scanned as its decompressed text.
+        compressed = file.name.endswith('.json.gz')
+        if (file.suffix.lower() not in TEXT_SUFFIXES and not compressed
+                and file.name not in {'.gitignore', 'MANIFEST.in', 'LICENSE', 'NOTICE'}):
             findings.append({'file': rel.as_posix(), 'reason': 'unreviewed_file_type'})
             continue
         try:
@@ -125,8 +128,14 @@ def scan_tree(root: Path, *, tracked_only: bool = False) -> dict:
             if file.stat().st_size > 2_000_000:
                 findings.append({'file': rel.as_posix(), 'reason': 'large_unreviewed_file'})
                 continue
-            contents = file.read_text(encoding='utf-8')
-        except (UnicodeError, OSError):
+            if compressed:
+                import gzip
+                with gzip.open(file, 'rt', encoding='utf-8') as stream:
+                    contents = stream.read(50_000_000)
+                json.loads(contents)   # must be complete, well-formed JSON
+            else:
+                contents = file.read_text(encoding='utf-8')
+        except (UnicodeError, OSError, ValueError):
             findings.append({'file': rel.as_posix(), 'reason': 'unreadable_text_file'})
             continue
         checked += 1
