@@ -11,8 +11,11 @@ layout), so any chip in the package, measured or designed, can be drawn:
     cad.write(devices.get("ibm_fez"), "fez.stl")          # 3D: GitHub and slicers open it directly
 
 Superconducting chips are drawn as cross-shaped (Xmon-style) transmons joined
-by straight coupler traces, with a readout pad beside each qubit; trapped-ion,
-neutral-atom and annealer chips are drawn as sites joined by their couplings.
+by straight coupler traces, with a readout pad beside each qubit; topological
+chips as Majorana tetrons, an H of two wires joined by a superconducting
+backbone with readout quantum dots at the wire ends, at Microsoft's published
+dimensions (3.5 um wires, 1 um backbone); trapped-ion, neutral-atom and
+annealer chips as sites joined by their couplings.
 Layers: 1 qubits, 2 couplers, 3 readout pads, 10 labels, 0 chip outline.
 The STL model is the outline as a silicon slab with every qubit, coupler and
 readout pad raised on it; its heights are exaggerated so the circuit can be
@@ -39,7 +42,10 @@ def layout(device, *, pitch=800.0, arm=220.0, width=30.0, trace=10.0, site=60.0,
 
     pitch is the distance between neighbouring lattice points; arm and width size each
     transmon cross; trace is the coupler width; site the radius of non-superconducting sites.
+    A topological chip uses the tetron's own dimensions instead (see `_tetrons`).
     """
+    if device.family == "topological":
+        return _tetrons(device)
     xy = [(x * pitch, y * pitch) for x, y in device.positions()]
     transmon = device.family == "superconducting"
     polygons, paths, labels = [], [], []
@@ -65,6 +71,37 @@ def layout(device, *, pitch=800.0, arm=220.0, width=30.0, trace=10.0, site=60.0,
     pad = margin + reach
     polygons.append((LAYERS["outline"], _rect(min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)))
     return {"polygons": polygons, "paths": paths, "labels": labels,
+            "size_um": (max(xs) - min(xs) + 2 * pad, max(ys) - min(ys) + 2 * pad)}
+
+
+def _tetrons(device, wire=3.5, wire_width=0.035, backbone=1.0, backbone_width=0.02, dot=0.15, pitch=4.0,
+             trace=0.05):
+    """Majorana tetrons in micrometres: two horizontal wires `backbone` apart, joined at their middles,
+    a readout quantum dot past each wire end and one on the backbone, and a joint-parity link from
+    each tetron to its neighbours. Dimensions from Microsoft's Majorana 2 preprint (arXiv:2606.03884)."""
+    xy = [(x * pitch, y * pitch) for x, y in device.positions()]
+    polygons, paths, labels = [], [], []
+    half, gap = wire / 2, backbone / 2
+    for q, (x, y) in enumerate(xy):
+        for side in (-1, 1):
+            polygons.append((LAYERS["qubit"], _rect(x - half, y + side * gap - wire_width / 2,
+                                                   x + half, y + side * gap + wire_width / 2)))
+            for end in (-1, 1):
+                polygons.append((LAYERS["readout"], _circle(x + end * (half + 2 * dot), y + side * gap, dot, 12)))
+        polygons.append((LAYERS["qubit"], _rect(x - backbone_width / 2, y - gap, x + backbone_width / 2, y + gap)))
+        polygons.append((LAYERS["readout"], _circle(x + 3 * dot, y, dot, 12)))
+        labels.append((LAYERS["label"], (x - half, y + gap + 4 * dot), f"Q{q}"))
+    for a, b in device.edges:   # from the facing dots of neighbouring tetrons
+        (xa, ya), (xb, yb) = xy[a], xy[b]
+        if abs(ya - yb) < 1e-9:
+            start, end = (xa + half + 3 * dot, ya), (xb - half - 3 * dot, yb)
+        else:
+            start, end = (xa, ya + gap), (xb, yb - gap)
+        paths.append((LAYERS["coupler"], [start, end], trace))
+    xs, ys = [p[0] for p in xy], [p[1] for p in xy]
+    pad = half + pitch / 2
+    polygons.append((LAYERS["outline"], _rect(min(xs) - pad, min(ys) - pad, max(xs) + pad, max(ys) + pad)))
+    return {"polygons": polygons, "paths": paths, "labels": labels, "scale_um": pitch,
             "size_um": (max(xs) - min(xs) + 2 * pad, max(ys) - min(ys) + 2 * pad)}
 
 
@@ -214,18 +251,22 @@ RELIEF_UM = {LAYERS["qubit"]: 40.0, LAYERS["coupler"]: 25.0, LAYERS["readout"]: 
 
 
 def solids(shapes):
-    """(layer, footprint, bottom, top) of every 3D block: the slab, then each shape on it."""
+    """(layer, footprint, bottom, top) of every 3D block: the slab, then each shape on it.
+
+    Heights are for an 800 um pitch and shrink with a smaller chip (a tetron array's `scale_um`)."""
+    k = shapes.get("scale_um", 800.0) / 800.0
+    substrate = SUBSTRATE_UM * k
     out = []
     for layer, points in shapes["polygons"]:
         if layer == LAYERS["outline"]:
-            out.append((layer, points, 0.0, SUBSTRATE_UM))
+            out.append((layer, points, 0.0, substrate))
         else:
-            out.append((layer, points, SUBSTRATE_UM, SUBSTRATE_UM + RELIEF_UM[layer]))
+            out.append((layer, points, substrate, substrate + RELIEF_UM[layer] * k))
     for layer, ((xa, ya), (xb, yb)), width in shapes["paths"]:
         length = math.hypot(xb - xa, yb - ya)
         nx, ny = -(yb - ya) / length * width / 2, (xb - xa) / length * width / 2
         footprint = [(xa + nx, ya + ny), (xa - nx, ya - ny), (xb - nx, yb - ny), (xb + nx, yb + ny)]
-        out.append((layer, footprint, SUBSTRATE_UM, SUBSTRATE_UM + RELIEF_UM[layer]))
+        out.append((layer, footprint, substrate, substrate + RELIEF_UM[layer] * k))
     return out
 
 

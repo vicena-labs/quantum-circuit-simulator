@@ -238,6 +238,8 @@ def expand(chip, n_qubits):
         out = replace(grown, error_1q=chip.error_1q, error_2q=chip.error_2q, readout=chip.readout, t1=chip.t1,
                       t2=chip.t2, time_1q=chip.time_1q, time_2q=chip.time_2q, crosstalk=dict(chip.crosstalk),
                       native_gates=chip.native_gates, source=chip.source)
+        if "topological" in p:   # a tetron chip keeps its measurement model as it grows
+            out = replace(out, parameters={**out.parameters, "topological": dict(p["topological"])})
     elif "module" in p and "modules" in p:
         size = chip.n_qubits // p["modules"]
         module = replace(chip, name=p["module"], topology=Topology(size, tuple(
@@ -279,6 +281,13 @@ def _grow_catalogue(name, parameters, n):
         return devices.get(name, rows=rows, columns=cols, **extra)
     if name == "line":
         return devices.get("line", n=n)
+    if name in ("tetron-array", "microsoft_majorana_2"):
+        r, c = parameters.get("rows") or 2, parameters.get("columns") or 2
+        f = math.sqrt(n / (r * c))
+        rows, cols = max(r, math.ceil(r * f)), max(c, math.ceil(c * f))
+        while rows * cols < n:
+            cols += 1
+        return devices.get("tetron-array", rows=rows, columns=cols)
     if name == "all-to-all-ions":
         return devices.get("all-to-all-ions", n=n)
     if name == "chimera":

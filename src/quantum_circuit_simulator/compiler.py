@@ -124,7 +124,8 @@ def _add_readout(budget, readout, measured):
             budget["qubits"].setdefault(str(q), {})["readout_error"] = (pair[0] + pair[1]) / 2
             budget["totals"]["readout"] += (pair[0] + pair[1]) / 2
     totals = budget["totals"]
-    budget["estimated_fidelity"] = math.exp(-sum(v for k, v in totals.items() if k != "zz_phase_rad"))
+    budget["estimated_fidelity"] = math.exp(-sum(v for k, v in totals.items()
+                                              if k not in ("zz_phase_rad", "magic_states")))
 
 
 def _instructions(circuit, values):
@@ -416,9 +417,16 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
     own two-qubit gate replaces its ZZ during the gate (it is calibrated into
     the gate); spectator pairs keep accumulating through it.
     `scale` multiplies every error, ZZ rate and decoherence rate (T1 and T2 are divided by it).
+
+    On a topological (tetron) chip, gates are parity-measurement sequences: a Clifford costs the
+    chip's one- or two-qubit measurement error and time, a T gate also consumes a magic state, and
+    any other angle is synthesized from T gates (see `tetron_cost`). Rotations are not virtual.
+    Idle and busy tetrons take parity flips from tau_z (bit flips) and tau_x (phase flips) instead
+    of T1/T2 relaxation.
     """
     if noise is None:
         scale = 0.0
+    topo = device.parameters.get("topological") if device.family == "topological" else None
     durations = {1: device.time_1q or 0.0, 2: device.time_2q or 0.0}
     adjacency = device._adjacency()
     spectator = device.crosstalk.get("spectator_error", 0.) * scale
@@ -487,6 +495,16 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
         if total:
             totals[total] += amount
 
+    def decay(w, gap):
+        """A qubit's decoherence over `gap` seconds: parity flips on a tetron, else T1/T2 relaxation."""
+        if topo and scale:
+            flips = [(1 - math.exp(-2 * gap * scale / topo[key])) / 2 for key in ("tau_z_s", "tau_x_s")]
+            out.append(("FLIP", [w], tuple(flips), -1, 1))
+            charge(w, "idle_s", gap)
+            charge(w, "idle_error", sum(flips), "idle")
+        elif relax_times(w):
+            relax(w, gap)
+
     def relax(w, gap):
         t1, t2 = relax_times(w)
         out.append(("RELAX", [w], (gap, t1, t2), -1, 1))
@@ -500,8 +518,9 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
             continue
         if len(wires) == 2:
             flush(wires)   # a new two-qubit gate on these wires: the previous one has certainly ended
-        virtual = prim == "RZ"
-        duration = 0.0 if virtual else durations[len(wires)]
+        virtual = prim == "RZ" and not topo
+        magic = tetron_cost(prim, base, index, topo) if topo and len(wires) == 1 else 0
+        duration = 0.0 if virtual else durations[len(wires)] * max(1, magic)
         start = max(busy.get(w, 0.0) for w in wires)
         if zz_rate and prim not in Z_TYPE:  # ZZ commutes with Z-type gates, so it can wait past them
             for w in wires:
@@ -512,8 +531,8 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
         if idle:
             for w in wires:
                 gap = start - busy.get(w, 0.0)
-                if w in started and gap > 0 and relax_times(w):
-                    relax(w, gap)
+                if w in started and gap > 0:
+                    decay(w, gap)
         out.append((prim, wires, base, index, weight))
         schedule.append({"gate": prim.lower(), "qubits": list(wires), "start_s": start, "duration_s": duration,
                          **({"parameter": index} if index >= 0 else {})})
@@ -541,10 +560,18 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
         elif not virtual:
             one += 1
             error = device.qubit(wires[0], "error_1q") if scale else 0.
+            if magic:   # each T gate: its measurements and one magic state
+                per_t = 1 - (1 - error) * (1 - topo["magic_state_error"] * scale)
+                error = min(0.75, 1 - (1 - per_t) ** magic)
+                charge(wires[0], "magic_states", magic, None)
+                totals["magic_states"] = totals.get("magic_states", 0) + magic
             charge(wires[0], "gates_1q", 1)
             if error:
                 gate_error(wires, error * scale, duration)
                 charge(wires[0], "gate_error_1q", error * scale, "gate_1q")
+        if topo and idle and duration:
+            for w in wires:
+                decay(w, duration)
         for w in wires:
             busy[w] = start + duration
             if zz_rate and w not in started:  # a newly started qubit couples to its started neighbours
@@ -563,9 +590,24 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
             flush_zz(w, end)
     if idle:
         for w in sorted(started):
-            if end - busy[w] > 0 and relax_times(w):
-                relax(w, end - busy[w])
+            if end - busy[w] > 0:
+                decay(w, end - busy[w])
     budget = {"qubits": qubits, "couplers": couplers, "totals": totals,
               "note": "error sums are first-order (infidelities add); estimated_fidelity = exp(-sum of totals)"}
+    if topo:
+        budget["note"] += "; on a tetron chip, idle_error is parity flips and magic_states counts T gates"
     return out, {"one_qubit_gates": one, "two_qubit_gates": two, "depth": max(level.values(), default=0),
                  "duration_s": end, "schedule": schedule, "noise_budget": budget}
+
+
+def tetron_cost(prim, angle, index, topo):
+    """Magic states a one-qubit gate consumes on a tetron chip: 0 for a Clifford, 1 for a T-type
+    angle (an odd multiple of pi/4), and about 3 log2(1/precision) for any other or a parameterised
+    angle, the T count of Ross-Selinger synthesis (arXiv:1403.2975)."""
+    if prim not in ("RX", "RY", "RZ"):
+        return 0
+    if index < 0:
+        quarters = angle / (math.pi / 4)
+        if abs(quarters - round(quarters)) < 1e-9:
+            return round(quarters) % 2
+    return math.ceil(3 * math.log2(1 / topo["synthesis_precision"]))

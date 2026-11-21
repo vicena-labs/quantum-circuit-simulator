@@ -38,7 +38,12 @@ def main():
         banner(theme, OUT / f"banner-{name}.png")
         chips(theme, OUT / f"chips-{name}.png")
         model(theme, OUT / f"chip-3d-{name}.png")
+        model(theme, OUT / f"majorana-3d-{name}.png", "microsoft_majorana_2",
+              "Microsoft Majorana 2, layer by layer",
+              "Four tetron qubits (Pb on InAs wires, 3.5 um long, 1 um apart) and their readout dots from cad.layout;\n"
+              "gate electrodes and package drawn from the same positions; heights exaggerated")
     cad.write(devices.get("ibm_fez"), OUT / "ibm_fez.stl")
+    cad.write(devices.get("microsoft_majorana_2"), OUT / "microsoft_majorana_2.stl")
 
 
 def banner(theme, path):
@@ -79,57 +84,63 @@ STACK = {"dark": {"surface": "#0b0b0c", "slab": "#1d1e21", "edge": "#3a3c41", "m
                   "qubit": "#6aa8f0", "coupler": "#e3e6eb", "hole": "#050506", "ink": "#f3f2ee", "muted": "#9a9993"},
          "light": {"surface": "#fcfcfb", "slab": "#2a2b2f", "edge": "#4a4c52", "metal": "#d6dae1",
                    "qubit": "#6aa8f0", "coupler": "#eef0f3", "hole": "#0b0b0c", "ink": "#1a1a19", "muted": "#6b6a66"}}
-GAP = 2600.0      # vertical spacing between exploded layers, micrometres
-SLAB = 220.0      # each layer's thickness as drawn
-RAISE = 90.0      # metal relief as drawn; real films are far thinner
+# Exploded-view proportions for a chip as wide as IBM Fez's layout (13,640 um); smaller chips scale.
+GAP, SLAB, RAISE = 2600.0, 220.0, 90.0   # layer spacing, layer thickness, metal relief, as drawn
 
 
-def model(theme, path):
-    """An exploded view of IBM Fez's layout: package, wiring, readout, then qubits and couplers.
+def model(theme, path, name="ibm_fez", title="IBM Fez, layer by layer",
+          subtitle="156 transmon qubits and 176 couplers from cad.layout; readout, wiring and package drawn "
+                   "from the same positions; heights exaggerated"):
+    """An exploded view of a chip's layout: package, wiring, readout, then the qubit layer.
 
-    The qubit layer is the package's own CAD layout (cad.layout); the readout
-    resonators, wiring and package beneath it are drawn from the same qubit
-    positions to show how such a chip is built, not from IBM's design.
+    The qubit layer, and a tetron chip's readout dots, are the package's own CAD layout
+    (cad.layout); the layers beneath are drawn from the same positions to show how such a chip
+    is built, not from any vendor's design.
     """
     look = STACK["dark" if theme["surface"] == THEMES["dark"]["surface"] else "light"]
-    shapes = cad.layout(devices.get("ibm_fez"))
+    device = devices.get(name)
+    shapes = cad.layout(device)
     outline = next(points for layer, points in shapes["polygons"] if layer == cad.LAYERS["outline"])
-    x0, y0 = outline[0]
-    x1, y1 = outline[2]
-    qubits = [((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) for layer, pts in shapes["polygons"]
-              if layer == cad.LAYERS["qubit"] for a, b in [(pts[0], pts[2])]][::2]
+    (x0, y0), (x1, y1) = outline[0], outline[2]
+    u = (x1 - x0) / 13640.0
+    centres = [(x * shapes.get("scale_um", 800.0), y * shapes.get("scale_um", 800.0)) for x, y in device.positions()]
+    if device.family == "topological":
+        dots = [("metal", f) for layer, f, _, _ in cad.solids(shapes) if layer == cad.LAYERS["readout"]]
+        layers = [("Package", _package(x0, y0, x1, y1, u)), ("Gate electrodes", _wiring(centres, x0, x1, u)),
+                  ("Readout dots", dots), ("Tetrons", _qubits(shapes))]
+    else:
+        layers = [("Package", _package(x0, y0, x1, y1, u)), ("Wiring", _wiring(centres, x0, x1, u)),
+                  ("Readout", _readout(centres, u)), ("Qubits and couplers", _qubits(shapes))]
+    gap, slab, rise = GAP * u, SLAB * u, RAISE * u
     fig = plt.figure(figsize=(16, 9), dpi=150, facecolor=look["surface"])
-    ax = fig.add_axes([-0.06, -0.08, 0.92, 1.16], projection="3d", facecolor=look["surface"],
+    ax = fig.add_axes([-0.04, -0.09, 0.88, 1.04], projection="3d", facecolor=look["surface"],
                       computed_zorder=False)
-    layers = [("Package", _package(x0, y0, x1, y1)), ("Wiring", _wiring(qubits, x0, x1)),
-              ("Readout", _readout(qubits)), ("Qubits and couplers", _qubits(shapes))]
     label_heights = []
-    for level, (name, features) in enumerate(layers):
-        z = level * GAP
-        margin = 500.0 if name == "Package" else 0.0
+    for level, (layer_name, features) in enumerate(layers):
+        z = level * gap
+        margin = 500.0 * u if layer_name == "Package" else 0.0
         _block(ax, [(x0 - margin, y0 - margin), (x1 + margin, y0 - margin), (x1 + margin, y1 + margin),
-                    (x0 - margin, y1 + margin)], z, z + SLAB, look["slab"], look["edge"])
+                    (x0 - margin, y1 + margin)], z, z + slab, look["slab"], look["edge"])
         for kind, footprint in features:
             if kind == "hole":
-                _face(ax, footprint, z + SLAB + 1, look["hole"])
+                _face(ax, footprint, z + slab * 1.01, look["hole"])
             else:
-                _block(ax, footprint, z + SLAB, z + SLAB + RAISE, look[kind], _shade(look[kind], 0.6))
-        label_heights.append((name, z + SLAB))
-    ax.set(xlim=(x0, x1), ylim=(y0, y1), zlim=(-0.45 * GAP, len(layers) * GAP))
-    ax.set_box_aspect((x1 - x0, y1 - y0, (len(layers) + 0.45) * GAP * 1.5))
+                _block(ax, footprint, z + slab, z + slab + rise, look[kind], _shade(look[kind], 0.6))
+        label_heights.append((layer_name, z + slab))
+    ax.set(xlim=(x0, x1), ylim=(y0, y1), zlim=(-0.45 * gap, len(layers) * gap))
+    ax.set_box_aspect((x1 - x0, y1 - y0, (len(layers) + 0.45) * gap * 1.5))
     ax.view_init(elev=24, azim=-58)
     ax.set_axis_off()
-    for name, z in label_heights:  # a label at the right edge of each layer
-        _label(fig, ax, (x1, (y0 + y1) / 2, z), name, look)
-    fig.text(0.04, 0.93, "IBM Fez, layer by layer", color=look["ink"], fontsize=20, weight="bold", **FONT)
-    fig.text(0.04, 0.895, "156 transmon qubits and 176 couplers from cad.layout; readout, wiring and package "
-                          "drawn from the same positions; heights exaggerated", color=look["muted"], fontsize=11, **FONT)
+    for layer_name, z in label_heights:  # a label at the right edge of each layer
+        _label(fig, ax, (x1, (y0 + y1) / 2, z), layer_name, look)
+    fig.text(0.04, 0.93, title, color=look["ink"], fontsize=20, weight="bold", **FONT)
+    fig.text(0.04, 0.905, subtitle, color=look["muted"], fontsize=11, va="top", linespacing=1.5, **FONT)
     fig.savefig(path, facecolor=look["surface"])
     plt.close(fig)
 
 
 def _qubits(shapes):
-    """Transmon crosses and coupler traces from the CAD layout."""
+    """The qubit layer from the CAD layout: transmon crosses or tetron wires, and their couplers."""
     out = []
     for layer, footprint, _, _ in cad.solids(shapes):
         if layer == cad.LAYERS["qubit"]:
@@ -139,8 +150,9 @@ def _qubits(shapes):
     return out
 
 
-def _readout(qubits, turns=5, pitch=34.0, width=12.0, span=300.0):
+def _readout(qubits, u, turns=5, pitch=34.0, width=12.0, span=300.0):
     """A meandering readout resonator beneath each qubit."""
+    pitch, width, span = pitch * u, width * u, span * u
     out = []
     for x, y in qubits:
         left = x - span / 2
@@ -152,24 +164,25 @@ def _readout(qubits, turns=5, pitch=34.0, width=12.0, span=300.0):
     return out
 
 
-def _wiring(qubits, x0, x1, width=60.0):
-    """One control line per row of qubits, run to the chip's edge."""
-    rows = sorted({round(y) for _, y in qubits})
+def _wiring(qubits, x0, x1, u, width=60.0):
+    """Two control lines along each row of qubits, run to the chip's edges."""
     out = []
-    for y in rows:
+    for y in sorted({round(y, 6) for _, y in qubits}):
         for offset in (-260.0, 260.0):
-            out.append(("metal", cad._rect(x0 + 150, y + offset, x1 - 150, y + offset + width)))
+            out.append(("metal", cad._rect(x0 + 150 * u, y + offset * u, x1 - 150 * u, y + (offset + width) * u)))
     return out
 
 
-def _package(x0, y0, x1, y1, pitch=1300.0, radius=180.0):
+def _package(x0, y0, x1, y1, u, pitch=1300.0, radius=180.0):
     """A grid of through-vias in the package, and pads around its rim."""
+    pitch, radius = pitch * u, radius * u
     out = []
     for x in np.arange(x0 + pitch, x1 - pitch / 2, pitch):
         for y in np.arange(y0 + pitch, y1 - pitch / 2, pitch):
             out.append(("hole", cad._circle(x, y, radius, sides=18)))
-    for x in np.arange(x0 - 300, x1 + 300, 160.0):
-        out += [("metal", cad._rect(x, y0 - 420, x + 70, y0 - 330)), ("metal", cad._rect(x, y1 + 330, x + 70, y1 + 420))]
+    for x in np.arange(x0 - 300 * u, x1 + 300 * u, 160.0 * u):
+        out += [("metal", cad._rect(x, y0 - 420 * u, x + 70 * u, y0 - 330 * u)),
+                ("metal", cad._rect(x, y1 + 330 * u, x + 70 * u, y1 + 420 * u))]
     return out
 
 

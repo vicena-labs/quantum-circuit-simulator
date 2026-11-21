@@ -318,6 +318,10 @@ def _emit(n, ops, params, readout, max_terms):
             continue
         if prim == "DEPOL":
             c.depolarize(wires, base)
+        elif prim == "FLIP":   # parity flips of a tetron: bit flip, then phase flip
+            for axis, probability in zip("XZ", base):
+                if probability:
+                    c.pauli_error(wires[0], axis, probability)
         elif prim == "RELAX":
             c.relax(wires[0], *base)
         elif prim in ANGLED:

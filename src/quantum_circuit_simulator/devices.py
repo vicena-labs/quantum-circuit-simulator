@@ -326,7 +326,7 @@ class Device:
         return text
 
 
-FAMILIES = {"superconducting", "trapped-ion", "neutral-atom", "annealer", "custom"}
+FAMILIES = {"superconducting", "trapped-ion", "neutral-atom", "topological", "annealer", "custom"}
 
 
 # ---------------------------------------------------------------- layouts
@@ -462,6 +462,83 @@ def spring_layout(n, edges, iterations=200, seed=0):
 SC_GATES = {"one_qubit": ["rz", "sx", "x"], "two_qubit": ["cz"]}
 
 
+# ---------------------------------------------------------------- topological (Majorana tetrons)
+# A tetron qubit computes by parity measurements: Z through one wire's parity, X through an
+# interference loop across both wires, and joint parities between neighbouring tetrons. Clifford
+# gates are sequences of these measurements; a T gate consumes a magic state; any other angle is
+# synthesized from T gates. Idle tetrons suffer parity flips, not T1 decay: a Z-parity switch
+# (lifetime tau_z) flips the bit, an X-parity switch (tau_x) flips the phase. The compiler reads
+# these values from parameters["topological"].
+TOPOLOGICAL_GATES = {"one_qubit": ["h", "s", "x", "z", "t"], "two_qubit": ["cz"]}
+MAJORANA_SOURCES = {
+    "tau_z_s": "Z-parity lifetime 22 +- 1 s on one wire of one Majorana 2 tetron, Pb/InAs, 50 mK "
+               "(Microsoft, arXiv:2606.03884, 2026; not peer reviewed)",
+    "measurement_time_s": "10 us pulsed readout integration on Majorana 2 (arXiv:2606.03884)",
+    "tau_x_s": "X-parity lifetime 14.5 +- 0.3 us on a Majorana 1-generation InAs-Al tetron "
+               "(arXiv:2507.08795); not published for Majorana 2",
+    "measurement_error_z": "single-shot Z assignment error 0.5% on a Majorana 1-generation tetron "
+                           "(arXiv:2507.08795); not published for Majorana 2",
+    "measurement_error_x": "single-shot X assignment error 16% on a Majorana 1-generation tetron "
+                           "(arXiv:2507.08795); not published for Majorana 2",
+    "magic_state_error": "assumption: no magic state has been published; set equal to the X "
+                         "measurement error, since injecting one needs an X-type measurement",
+    "synthesis_precision": "assumption: each arbitrary rotation is synthesized to this precision from "
+                           "about 3 log2(1/precision) T gates (Ross and Selinger, arXiv:1403.2975)",
+    "measurements": "assumption: a one-qubit Clifford as one Z-type and one X-type measurement, CZ as a "
+                    "joint ZZ parity plus one Z-type and one X-type measurement; set from your protocol",
+}
+MAJORANA_2 = {"tau_z_s": 22.0, "tau_x_s": 14.5e-6, "measurement_time_s": 10e-6, "measurement_error_z": 0.005,
+              "measurement_error_x": 0.16, "magic_state_error": 0.16, "synthesis_precision": 1e-3}
+# What-if values for designed tetron arrays: Microsoft's stated ~1 us operation scale, the measured
+# Z-parity lifetime, and targets for the rest. Not data from any device.
+TETRON_TARGETS = {"tau_z_s": 22.0, "tau_x_s": 1e-3, "measurement_time_s": 1e-6, "measurement_error_z": 1e-3,
+                  "measurement_error_x": 1e-3, "magic_state_error": 1e-3, "synthesis_precision": 1e-3}
+
+
+def _majorana_2(**model):
+    return _topological(
+        "microsoft_majorana_2", _tetron_grid(2, 2),
+        "Microsoft Majorana 2 (June 2026): the published unit cell of four tetron qubits (two grounded, two "
+        "floating) on a Pb/InAs/InAsSb topoconductor, with joint parity measurements between neighbours. "
+        "Microsoft has published one wire's Z-parity lifetime and its readout time, not gate fidelities; "
+        "values it has not published come from the Majorana 1-generation tetron or are labelled "
+        "assumptions in parameters['sources'].",
+        {**MAJORANA_2, **{k: v for k, v in model.items() if v is not None}},
+        "Microsoft, arXiv:2606.03884 (Majorana 2) and arXiv:2507.08795 (tetron measurements); see "
+        "parameters['sources']. Independent physicists dispute that these devices are topological qubits.",
+        {"sources": MAJORANA_SOURCES,
+         "tetrons": ["AB (grounded)", "BA (grounded)", "AA (floating)", "BB (floating)"],
+         "tetron_geometry_um": {"wire_length": 3.5, "wire_width": 0.035, "backbone_length": 1.0,
+                                "backbone_width": 0.02, "dots_per_tetron": 5}})
+
+
+def _tetron_array(rows=2, columns=4, **model):
+    return _topological(
+        f"tetron-array-{rows}x{columns}", _tetron_grid(rows, columns),
+        "Array of Majorana tetron qubits with joint parity measurements between neighbours, as in "
+        "Microsoft's roadmap (4x2 for error detection, 27x13 for lattice surgery). Noise values are what-if "
+        "targets, not data from any device.",
+        {**TETRON_TARGETS, **{k: v for k, v in model.items() if v is not None}}, ILLUSTRATIVE,
+        {"rows": rows, "columns": columns, "sources": {"roadmap": "Microsoft, arXiv:2502.12252 (CC BY 4.0)"}})
+
+
+def _topological(name, size_edges, description, model, source, extra=None):
+    """A tetron chip whose gate errors and times follow from its parity measurements."""
+    ez, ex, t = model["measurement_error_z"], model["measurement_error_x"], model["measurement_time_s"]
+    noise = dict(error_1q=1 - (1 - ez) * (1 - ex),          # one Z-type and one X-type measurement
+                 error_2q=1 - (1 - ez) ** 2 * (1 - ex),     # a joint ZZ, one Z-type and one X-type
+                 readout=(ez, ez), t1=None, t2=None, time_1q=2 * t, time_2q=3 * t)
+    return _device(name, "topological", size_edges, TOPOLOGICAL_GATES, noise, description,
+                   {**(extra or {}), "topological": dict(model)}, source=source)
+
+
+def _tetron_grid(rows, columns):
+    """Tetrons on a rectangular array, joint parities between nearest neighbours; coordinates in tetron
+    pitches, wider than tall, as cad draws each tetron as an H of two wires."""
+    n, edges, _ = _grid_edges(rows, columns)
+    return n, edges, [(c * 1.6, r) for r in range(rows) for c in range(columns)]
+
+
 def _annealer(name, size_edges, description, parameters):
     from .annealing import ANNEALER_PROPERTIES
     return _device(name, "annealer", size_edges, {"one_qubit": [], "two_qubit": []}, dict(), description,
@@ -504,6 +581,10 @@ CATALOG = {
         "Neutral-atom array (QuEra- and Pasqal-style) coupling atoms within `radius` lattice spacings "
         "(1.5 includes diagonals); native CZ.", {"rows": rows, "columns": columns, "radius": radius}),
         {"rows": 10, "columns": 10, "radius": 1.5}, "Neutral-atom array, Rydberg coupling within a radius"),
+    "microsoft_majorana_2": (_majorana_2, {k: None for k in MAJORANA_2},
+        "Microsoft Majorana 2: four tetron qubits, measurement-based, published parity lifetimes (topological)"),
+    "tetron-array": (_tetron_array, {"rows": 2, "columns": 4, **{k: None for k in TETRON_TARGETS}},
+        "Majorana tetron array of any size, measurement-based (topological; Microsoft roadmap)"),
     "chimera": (lambda m=16, n=None, t=4: _device(
         f"chimera-{m}x{n or m}x{t}", "annealer", _chimera_edges(m, n or m, t), {"one_qubit": [], "two_qubit": []},
         dict(), "D-Wave-style Chimera annealer graph: an m x n grid of K_{t,t} unit cells.",
@@ -538,7 +619,8 @@ def catalog():
     """Every device: generated layouts (with their default parameters) and real chips (calibration snapshots)."""
     families = {"heavy-hex-127": "superconducting", "heavy-hex": "superconducting",
                 "square-grid": "superconducting", "line": "superconducting", "all-to-all-ions": "trapped-ion",
-                "neutral-atom-grid": "neutral-atom", "chimera": "annealer", "pegasus": "annealer",
+                "neutral-atom-grid": "neutral-atom", "microsoft_majorana_2": "topological",
+                "tetron-array": "topological", "chimera": "annealer", "pegasus": "annealer",
                 "zephyr": "annealer", "dwave-advantage": "annealer", "dwave-advantage2": "annealer"}
     generated = [{"name": name, "kind": "layout", "family": families[name], "description": text,
                   "parameters": defaults} for name, (_, defaults, text) in CATALOG.items()]

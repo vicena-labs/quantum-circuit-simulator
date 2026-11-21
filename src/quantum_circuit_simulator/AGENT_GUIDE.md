@@ -72,6 +72,8 @@ Built-in families, each with its own observable:
 
 The solver is chosen per point: exact sparse propagation, then the state vector (noise-free, up to 24 qubits) or density matrix (noisy, up to 10 qubits), then exact dense for cones of at most 6 wires, then truncation at 1e-4 and 1e-5. A truncated row has `exact: false`, an `error_bound` with `bound_informative`, and the `convergence_change` between the two tolerances. A chip too small for a size gives a row with `error` instead of stopping the sweep. In Python: `from quantum_circuit_simulator.experiments import sweep, solve`.
 
+Topological chips: `devices.get("microsoft_majorana_2")` (four tetrons, Microsoft's published parity lifetimes and readout, with the values Microsoft has not published taken from the Majorana 1-generation tetron or labelled assumptions in `parameters["sources"]`) and `devices.get("tetron-array", rows=..., columns=...)` (what-if targets). The compiler charges Clifford gates their parity measurements, T gates a magic state and other angles about 3 log2(1/precision) T gates (`noise_budget.totals.magic_states`), and applies parity flips instead of T1/T2. Say which values are published and which assumed whenever you report a tetron result.
+
 ## Designing chips
 
 Build a new chip from a catalogue layout, then compare it with existing chips:
