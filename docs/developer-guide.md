@@ -77,7 +77,7 @@ Do not silently treat arbitrary hardware channels as depolarizing noise or claim
 
 ## Integrating with research agents
 
-The portable contract is a source-installed Python package or versioned JSON CLI. A coding agent can inspect `pyproject.toml`, run the included tests, invoke the `doctor` command and exercise the examples. Do not copy a development monorepo, run the experimental C++ runner on untrusted inputs, or use a solver output without validating the `backend` and error status. [Security boundaries](../SECURITY.md) and [benchmark rules](comparison-methodology.md) apply.
+The portable contract is a source-installed Python package or versioned JSON CLI. A coding agent can inspect `pyproject.toml`, run the included tests, invoke the `doctor` command and exercise the examples. Do not copy a development monorepo, run the experimental C++ runner on untrusted inputs, or use a solver output without validating the `backend` and error status. [Security boundaries](../.github/SECURITY.md) and [benchmark rules](comparison-methodology.md) apply.
 
 Return to [README](../README.md).
 

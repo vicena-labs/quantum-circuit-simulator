@@ -1,12 +1,39 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/banner-dark.png">
+  <img alt="Quantum Circuit Simulator by Vicena Labs, beside IBM Fez's 156 qubits coloured by their calibrated T1" src="docs/images/banner-light.png">
+</picture>
+
+<p align="center">
+  <a href="https://vicena.ai/agent?q=Using%20the%20Quantum%20Circuit%20Simulator%2C%20reproduce%20IBM%27s%20127-qubit%20kicked%20Ising%20utility%20experiment%20%28Kim%20et%20al.%2C%20Nature%202023%29%20for%205%20Trotter%20steps%20on%20the%20ibm_kyiv%20calibration%2C%20and%20compare%20the%20ideal%20and%20noisy%20magnetization%20with%20the%20paper%27s%20exact%20values."><img alt="Try it in Vicena, no install" src="https://img.shields.io/badge/Try_it_in_Vicena-no_install-2a78d6?style=for-the-badge"></a>
+  <a href="https://github.com/vicena-labs/quantum-circuit-simulator/stargazers"><img alt="Star on GitHub" src="https://img.shields.io/github/stars/vicena-labs/quantum-circuit-simulator?style=for-the-badge&logo=github&label=Star"></a>
+  <a href="https://github.com/vicena-labs"><img alt="Follow Vicena Labs" src="https://img.shields.io/github/followers/vicena-labs?style=for-the-badge&logo=github&label=Follow%20Vicena%20Labs"></a>
+</p>
+<p align="center">
+  <a href="https://github.com/vicena-labs/quantum-circuit-simulator/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/vicena-labs/quantum-circuit-simulator/actions/workflows/test.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
+  <img alt="Python 3.10 to 3.13" src="https://img.shields.io/badge/python-3.10%E2%80%933.13-blue">
+  <a href="#citing-and-attribution"><img alt="Cite it" src="https://img.shields.io/badge/cite-CITATION.cff-blue"></a>
+</p>
+
 # Quantum Circuit Simulator
 
-**A quantum circuit simulator by Vicena, built for AI agents and the scientists who work with them.** It answers the question that decides where quantum computing effort goes: *will this algorithm work on that hardware, at this size and noise level, and what would make it work?* In one package you can:
-- simulate noisy circuits on realistic chips;
+**A quantum circuit simulator by [Vicena Labs](https://vicena.ai), built for AI agents and the scientists who work with them.** It answers the question that decides where quantum computing effort goes: *will this algorithm work on that hardware, at this size and noise level, and what would make it work?* In one package you can:
+- simulate noisy circuits on real chips' calibrations;
 - develop algorithms with exact gradients;
-- design new chips and compare them;
+- design new chips, compare them and export them as 2D or 3D CAD;
 - get every answer as JSON that says how it was computed and whether it is exact.
 
-**Release candidate 0.5.0rc2, by Mehdi Farza, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](CITATION.cff) and the [related work](docs/related-work.md) it builds on.
+## Try it now, without installing
+
+[Vicena](https://vicena.ai) runs this package for you: describe the study in plain language and its scientist agent writes the circuit, runs it on a real chip's calibration, checks the result and reports it with provenance. Click a prompt to open it in Vicena, ready to send:
+
+- [**Run a Bell circuit on IBM Fez**](https://vicena.ai/agent?q=Using%20the%20Quantum%20Circuit%20Simulator%2C%20run%20a%20Bell%20circuit%20on%20IBM%20Fez%27s%20real%20calibration%20and%20show%20me%20the%20ideal%20and%20noisy%20results%20from%204%2C096%20shots.): ideal and noisy results from 4,096 shots.
+- [**Reproduce IBM's 127-qubit utility experiment**](https://vicena.ai/agent?q=Using%20the%20Quantum%20Circuit%20Simulator%2C%20reproduce%20IBM%27s%20127-qubit%20kicked%20Ising%20utility%20experiment%20%28Kim%20et%20al.%2C%20Nature%202023%29%20for%205%20Trotter%20steps%20on%20the%20ibm_kyiv%20calibration%2C%20and%20compare%20the%20ideal%20and%20noisy%20magnetization%20with%20the%20paper%27s%20exact%20values.): the kicked Ising circuit on IBM Kyiv's calibration, against the paper's exact values.
+- [**Design QAOA on all 156 qubits of IBM Fez**](https://vicena.ai/agent?q=Using%20the%20Quantum%20Circuit%20Simulator%2C%20design%20a%20QAOA%20Max-Cut%20algorithm%20on%20all%20156%20qubits%20of%20IBM%20Fez%20and%20compare%20its%20ideal%20and%20noisy%20results%20with%20random%20and%20optimal%20cuts.): a Max-Cut algorithm, ideal and noisy, against random and optimal cuts.
+
+Or type your own question at [vicena.ai](https://vicena.ai).
+
+**Release candidate 0.5.0rc2, by Mehdi Farza at Vicena Labs, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](#citing-and-attribution) and the [related work](docs/related-work.md) it builds on.
 
 ## What it does
 
@@ -15,7 +42,7 @@
 - **Designs hardware.** It builds chips (modules, defects, physics-derived errors, crosstalk), grows them to larger sizes with the same architecture, and ranks designs on real workloads.
 - **Returns states and samples.** It gives amplitudes, density matrices and measured bitstrings with noise, up to 28 qubits, and any size for Clifford circuits.
 - **Ships real chips and standard circuits.** It includes 65 IBM chips and 3 Google chips from their measured calibrations, D-Wave Advantage-style annealers, and over a hundred benchmark circuits from MQT Bench and Supermarq.
-- **Draws chips as CAD files.** It writes any chip, real or designed, as a GDSII, DXF or SVG layout.
+- **Draws chips as CAD files.** It writes any chip, real or designed, as a GDSII, DXF or SVG layout, or as a 3D STL model.
 
 ## How it solves: Pauli cones
 
@@ -100,7 +127,19 @@ Every command prints one JSON document tagged `schema: quantum-circuit-simulator
 
 **Benchmark circuits.** `circuits.library()` lists over a hundred circuits from MQT Bench (QFT, Grover, QPE, amplitude estimation, arithmetic, QAOA, VQE ansätze, quantum walks and more) and Supermarq, at sizes up to 127 qubits, in this package's gate set. `circuits.load("mqt/qft", 16)` returns one as OpenQASM, and sweeps take library names like families. `family("kicked-ising")` is IBM's 127-qubit utility experiment.
 
-**CAD.** `cad.write(chip, "chip.gds")` writes a chip as GDSII (also DXF and SVG): Xmon-style transmon crosses, coupler traces and readout pads at the chip's coordinates, or sites for ions, atoms and annealers, on separate layers in micrometres. It is a placement layout for drawing, documenting and starting a design, not a fabrication-ready mask; full electromagnetic layout is the job of tools such as Qiskit Metal or KQCircuits.
+**CAD.** `cad.write(chip, "chip.gds")` writes a chip as GDSII (also DXF, SVG, and STL for a 3D model): Xmon-style transmon crosses, coupler traces and readout pads at the chip's coordinates, or sites for ions, atoms and annealers, on separate layers in micrometres. The STL model raises them on a silicon slab, with heights exaggerated so the circuit can be seen; [IBM Fez's model](docs/images/ibm_fez.stl) opens in GitHub's 3D viewer. It is a placement layout for drawing, documenting and starting a design, not a fabrication-ready mask; full electromagnetic layout is the job of tools such as Qiskit Metal or KQCircuits.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/chips-dark.png">
+  <img alt="IBM Fez, Google Willow and a corner of D-Wave Advantage2, with qubits coloured by calibrated T1" src="docs/images/chips-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/chip-3d-dark.png">
+  <img alt="An exploded 3D view of IBM Fez: package, wiring, readout, and the qubit and coupler layer from the package's CAD layout" src="docs/images/chip-3d-light.png">
+</picture>
+
+The figures are drawn from the bundled data by [`tools/render_readme_images.py`](tools/render_readme_images.py). The qubit layer of the exploded view is the package's own CAD layout; the readout, wiring and package beneath it are drawn from the same positions to show how such a chip is built, not from IBM's design.
 
 **Annealing.** `annealing.anneal(problem, devices.get("dwave-advantage"))` embeds an Ising or QUBO problem on a D-Wave Advantage-style Pegasus chip (or Advantage2 Zephyr, Chimera, Pegasus, Zephyr) with minorminer, rescales it to the chip's h and J ranges, can add control errors, and samples it with simulated quantum annealing (path-integral Monte Carlo), simulated annealing or tabu search. It reports the best energy, the exact ground energy and its probability on small problems, chain lengths and chain breaks. These are models of an annealer, not the device. Needs `pip install "quantum-circuit-simulator[dwave]"`.
 
@@ -109,7 +148,7 @@ quantum-circuit-simulator devices                                     # layouts 
 quantum-circuit-simulator run circuit.qasm --observable "Z0*Z1" --device ibm_fez --compile
 quantum-circuit-simulator circuits --suite "MQT Bench" --search qft    # the benchmark library
 quantum-circuit-simulator sweep --family mqt/qft --sizes 8,16 --device ibm_torino --device google_willow_pink
-quantum-circuit-simulator cad ibm_fez --out fez.gds
+quantum-circuit-simulator cad ibm_fez --out fez.gds                    # or fez.stl for a 3D model
 quantum-circuit-simulator anneal --model maxcut --lattice regular --size 60,3 --device dwave-advantage
 ```
 
@@ -239,7 +278,7 @@ print(result.backend, graph.diagnostics, graph.numerics)
 - Sparse native/reference arrays are float64, with absolute transfer filtering at `5e-15` and coefficient filtering at `1e-16` times the observable's l1 norm, so results scale linearly with observable weights. Graphs do not prune coefficients; dense arrays are complex128. Structural cone reduction and early product-input contraction are exact algebraically, but no backend certifies an accumulated floating-point error bound. Truncated plans bound the truncation error, not floating-point roundoff. Read `plan.numerics` for the active policy.
 - Exceeding a declared budget fails the request unless an explicitly selected fallback succeeds within its own limits. No incomplete sum is returned as success. A prepared object cannot be evaluated concurrently; use separate plans for parallel callers.
 
-The command-line interface validates a versioned JSON request, limits input to 4 MiB and executes one worker with a wall deadline (`--timeout`, default 60 seconds). The deadline begins after request input has been read. This is not a secure sandbox or a hard RAM budget for untrusted services; see [security boundaries](SECURITY.md).
+The command-line interface validates a versioned JSON request, limits input to 4 MiB and executes one worker with a wall deadline (`--timeout`, default 60 seconds). The deadline begins after request input has been read. This is not a secure sandbox or a hard RAM budget for untrusted services; see [security boundaries](.github/SECURITY.md).
 
 ## Algorithm and architecture playground
 
@@ -267,13 +306,31 @@ python tools/check_source_hygiene.py  # Strict source-archive check.
 python tools/check_release.py
 ```
 
-Wheels are built by the [wheel workflow](.github/workflows/wheels.yml) and uploaded to PyPI only from a published GitHub release. The [contribution guide](CONTRIBUTING.md) and [third-party dependency review](THIRD_PARTY.md) explain what is included. Static source checks are safeguards, not proof of ownership or absence of unknown secrets.
+Wheels are built by the [wheel workflow](.github/workflows/wheels.yml) and uploaded to PyPI only from a published GitHub release. The [contribution guide](.github/CONTRIBUTING.md) and [third-party dependency review](THIRD_PARTY.md) explain what is included. Static source checks are safeguards, not proof of ownership or absence of unknown secrets.
 
 The restricted fresh-circuit native executables are retained as **experimental sources**, not exposed as the general package CLI. Their narrower input contract and missing production isolation should not be confused with the public Circuit API.
 
 ## Related work and acknowledgements
 
 Quantum Circuit Simulator implements Heisenberg-picture Pauli propagation, a method developed across a substantial literature, and reuses ideas from several open tools. [Related work](docs/related-work.md) lists the papers and software it builds on, what each contributed, and how Quantum Circuit Simulator differs.
+
+## Citing and attribution
+
+If you use Quantum Circuit Simulator in a publication, a thesis, a report or a product, please cite it and Vicena Labs. GitHub's **Cite this repository** button gives this entry in several formats, from [CITATION.cff](CITATION.cff):
+
+```bibtex
+@software{quantum_circuit_simulator,
+  author       = {Farza, Mehdi and {Vicena Labs}},
+  title        = {Quantum Circuit Simulator: noisy circuits, algorithms and chip design with the Pauli-cone method},
+  version      = {0.5.0rc2},
+  year         = {2026},
+  publisher    = {Vicena Labs},
+  url          = {https://github.com/vicena-labs/quantum-circuit-simulator},
+  license      = {Apache-2.0}
+}
+```
+
+When you modify it or build on it, keep the attribution. The Apache-2.0 [license](LICENSE) requires every copy and derivative work to keep the copyright, patent and attribution notices, to include the [NOTICE](NOTICE) file, and to mark the files you changed. Please also keep the citation above in your documentation, and cite the methods this package builds on, listed in [related work](docs/related-work.md).
 
 ## Many-qubit circuits and custom backends
 

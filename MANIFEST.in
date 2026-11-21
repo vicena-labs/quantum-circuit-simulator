@@ -1,4 +1,4 @@
-include README.md LICENSE NOTICE THIRD_PARTY.md CHANGELOG.md CONTRIBUTING.md SECURITY.md CITATION.cff AGENTS.md
+include README.md LICENSE NOTICE THIRD_PARTY.md CHANGELOG.md .github/CONTRIBUTING.md .github/SECURITY.md CITATION.cff AGENTS.md
 recursive-include src *.py *.cpp *.md
 recursive-include tests *.py
 recursive-include examples *.json *.py

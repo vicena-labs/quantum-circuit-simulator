@@ -1,4 +1,5 @@
-"""Chip layouts as CAD files: GDSII for fabrication tools, DXF for mechanical CAD, SVG for documents.
+"""Chip layouts as CAD files: GDSII for fabrication tools, DXF for mechanical CAD, SVG for documents,
+and STL for a 3D model.
 
 Every device has qubit coordinates (real chips from their published maps,
 catalogue layouts from their lattices, custom chips from a force-directed
@@ -7,11 +8,15 @@ layout), so any chip in the package, measured or designed, can be drawn:
     from quantum_circuit_simulator import cad, devices
     cad.write(devices.get("ibm_fez"), "fez.gds")          # format from the extension
     cad.write(devices.get("google_willow_pink"), "willow.svg")
+    cad.write(devices.get("ibm_fez"), "fez.stl")          # 3D: GitHub and slicers open it directly
 
 Superconducting chips are drawn as cross-shaped (Xmon-style) transmons joined
 by straight coupler traces, with a readout pad beside each qubit; trapped-ion,
 neutral-atom and annealer chips are drawn as sites joined by their couplings.
 Layers: 1 qubits, 2 couplers, 3 readout pads, 10 labels, 0 chip outline.
+The STL model is the outline as a silicon slab with every qubit, coupler and
+readout pad raised on it; its heights are exaggerated so the circuit can be
+seen (`relief`), since real metal films are a fraction of a micrometre thick.
 
 This is a placement layout generated from connectivity, in micrometres at a
 chosen pitch, for visualising, documenting and starting a design. It is not a
@@ -64,13 +69,13 @@ def layout(device, *, pitch=800.0, arm=220.0, width=30.0, trace=10.0, site=60.0,
 
 
 def write(device, path, *, fmt=None, **options):
-    """Write a chip layout to `path`; fmt "gds", "dxf" or "svg", or taken from the extension."""
+    """Write a chip layout to `path`; fmt "gds", "dxf", "svg" or "stl", or taken from the extension."""
     path = Path(path)
     fmt = (fmt or path.suffix.lstrip(".")).lower()
     shapes = layout(device, **options)
-    writer = {"gds": _gds, "gdsii": _gds, "dxf": _dxf, "svg": _svg}.get(fmt)
+    writer = {"gds": _gds, "gdsii": _gds, "dxf": _dxf, "svg": _svg, "stl": _stl}.get(fmt)
     if writer is None:
-        raise ValueError("format must be gds, dxf or svg")
+        raise ValueError("format must be gds, dxf, svg or stl")
     data = writer(device, shapes)
     path.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
     return {"path": str(path), "format": fmt, "qubits": device.n_qubits, "couplers": len(device.edges),
@@ -199,3 +204,63 @@ def _svg(device, shapes):
                      f'fill="{COLOURS[layer]}">{text}</text>')
     parts.append("</svg>")
     return "\n".join(parts) + "\n"
+
+
+# ---------------------------------------------------------------- STL
+# Heights in micrometres: a substrate slab, then each layer raised on it. The
+# relief is exaggerated for viewing; real films are well under a micrometre.
+SUBSTRATE_UM = 250.0
+RELIEF_UM = {LAYERS["qubit"]: 40.0, LAYERS["coupler"]: 25.0, LAYERS["readout"]: 30.0}
+
+
+def solids(shapes):
+    """(layer, footprint, bottom, top) of every 3D block: the slab, then each shape on it."""
+    out = []
+    for layer, points in shapes["polygons"]:
+        if layer == LAYERS["outline"]:
+            out.append((layer, points, 0.0, SUBSTRATE_UM))
+        else:
+            out.append((layer, points, SUBSTRATE_UM, SUBSTRATE_UM + RELIEF_UM[layer]))
+    for layer, ((xa, ya), (xb, yb)), width in shapes["paths"]:
+        length = math.hypot(xb - xa, yb - ya)
+        nx, ny = -(yb - ya) / length * width / 2, (xb - xa) / length * width / 2
+        footprint = [(xa + nx, ya + ny), (xa - nx, ya - ny), (xb - nx, yb - ny), (xb + nx, yb + ny)]
+        out.append((layer, footprint, SUBSTRATE_UM, SUBSTRATE_UM + RELIEF_UM[layer]))
+    return out
+
+
+def _stl(device, shapes):
+    """Binary STL of the extruded layout, in micrometres."""
+    triangles = [t for _, footprint, bottom, top in solids(shapes) for t in _prism(footprint, bottom, top)]
+    header = f"{device.name} chip by quantum-circuit-simulator, micrometres".encode()[:80].ljust(80, b" ")
+    out = bytearray(header + struct.pack("<I", len(triangles)))
+    for a, b, c in triangles:
+        out += struct.pack("<12fH", *_normal(a, b, c), *a, *b, *c, 0)
+    return bytes(out)
+
+
+def _prism(footprint, bottom, top):
+    """Triangles of a convex footprint extruded from `bottom` to `top`, wound outwards."""
+    points = footprint if _area(footprint) > 0 else footprint[::-1]
+    low = [(x, y, bottom) for x, y in points]
+    high = [(x, y, top) for x, y in points]
+    faces = []
+    for k in range(1, len(points) - 1):
+        faces.append((high[0], high[k], high[k + 1]))
+        faces.append((low[0], low[k + 1], low[k]))
+    for k in range(len(points)):
+        j = (k + 1) % len(points)
+        faces += [(low[k], low[j], high[j]), (low[k], high[j], high[k])]
+    return faces
+
+
+def _area(points):
+    return sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1])) / 2
+
+
+def _normal(a, b, c):
+    u = [b[i] - a[i] for i in range(3)]
+    v = [c[i] - a[i] for i in range(3)]
+    n = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
+    norm = math.sqrt(sum(x * x for x in n)) or 1.0
+    return [x / norm for x in n]

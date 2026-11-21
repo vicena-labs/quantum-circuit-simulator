@@ -1,6 +1,15 @@
-Quantum Circuit Simulator
-Copyright 2026 Mehdi Farza and Quantum Circuit Simulator contributors.
+Quantum Circuit Simulator, by Vicena Labs
+https://github.com/vicena-labs/quantum-circuit-simulator
+Copyright 2026 Mehdi Farza, Vicena Labs, and Quantum Circuit Simulator contributors.
 
 Licensed under the Apache License, Version 2.0. See LICENSE.
-Third-party packages are installed separately and retain their own licenses;
-see THIRD_PARTY.md. No third-party simulator implementation is vendored here.
+
+Attribution. Under section 4 of the license, every redistribution and every
+derivative work must keep this NOTICE file, or its text in the documentation
+or display that third-party notices normally appear in. If you use this
+software in a publication or product, please cite it and Vicena Labs as given
+in CITATION.cff, and keep that citation in work you build on it.
+
+Third-party packages are installed separately and retain their own licenses,
+and bundled calibration and circuit data carry their sources' licenses; see
+THIRD_PARTY.md. No third-party simulator implementation is vendored here.

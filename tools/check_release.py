@@ -14,7 +14,7 @@ if not license_expression or 'Pending' in license_expression or license_expressi
     issues.append('Package metadata does not declare an approved license.')
 if (root/'LICENSE-PENDING.md').exists():
     issues.append('Pending-license marker must be resolved before publication.')
-if not (root/'SECURITY.md').exists():
+if not (root/'.github'/'SECURITY.md').exists():
     issues.append('Security disclosure guidance is missing.')
 print(json.dumps({'release_metadata_qualified':not issues,
                   'manual_rights_and_name_review_still_required':True,

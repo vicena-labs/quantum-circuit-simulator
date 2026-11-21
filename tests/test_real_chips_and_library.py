@@ -5,6 +5,7 @@ import struct
 import subprocess
 import sys
 
+import numpy as np
 import pytest
 
 from quantum_circuit_simulator import cad, devices
@@ -109,6 +110,16 @@ def test_cad_files_are_valid(tmp_path):
     cad.write(devices.get("all-to-all-ions", n=6), tmp_path / "ions.dxf")
     assert "ENTITIES" in (tmp_path / "ions.dxf").read_text()
     assert cad._real8(1e-3)[0] == 0x3E and cad._real8(1e-9)[0] == 0x39   # GDSII excess-64 exponents
+    # STL: closed, outward-facing solids, so the signed volume is the slab plus the raised metal.
+    cad.write(chip, tmp_path / "torino.stl")
+    stl = (tmp_path / "torino.stl").read_bytes()
+    count = struct.unpack("<I", stl[80:84])[0]
+    assert len(stl) == 84 + 50 * count
+    v = np.frombuffer(stl[84:], dtype=np.dtype([("n", "<3f4"), ("v", "<9f4"), ("a", "<u2")]))["v"]
+    v = v.reshape(-1, 3, 3).astype(float)
+    volume = np.einsum("ij,ij->i", v[:, 0], np.cross(v[:, 1], v[:, 2])).sum() / 6
+    width, height = info["size_um"]
+    assert width * height * cad.SUBSTRATE_UM < volume < width * height * cad.SUBSTRATE_UM * 1.05
 
 
 def test_annealing_finds_ground_states_directly_and_on_a_chip():
