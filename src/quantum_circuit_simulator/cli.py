@@ -257,7 +257,7 @@ def _sweep(args):
     devices_spec = []
     for d in args.device:
         if d.endswith('.json') and not d.startswith('fit:'):
-            devices_spec.append(json.loads(Path(d).read_text()))
+            devices_spec.append(json.loads(Path(d).read_text(encoding="utf-8")))
         elif d.endswith('.json'):
             devices_spec.append('fit:' + str(Path(d[4:]).resolve()))
         else:
@@ -424,7 +424,7 @@ def _task(args):
             spec['hamiltonian'] = _hamiltonian_spec(args)
         if args.command == 'anneal':
             if args.problem:
-                spec['problem'] = json.loads(Path(args.problem).read_text())
+                spec['problem'] = json.loads(Path(args.problem).read_text(encoding="utf-8"))
             if args.device:
                 spec.update(_device_spec(args.device))
             spec.update(sampler=args.sampler, num_reads=args.num_reads, num_sweeps=args.num_sweeps,
@@ -459,10 +459,10 @@ def _task(args):
         return emit_error('Timeout', f'{args.command} exceeded its deadline', 124,
                           hint='Raise --timeout, or reduce the size, steps or shots.')
     if output.get('ok') and args.command == 'circuits' and args.name and args.out:
-        Path(args.out).write_text(output['qasm'])
+        Path(args.out).write_text(output['qasm'], encoding='utf-8')
         output['written_to'] = args.out
     if output.get('ok') and args.command == 'hamiltonian' and getattr(args, 'out', None):
-        Path(args.out).write_text(json.dumps(output['hamiltonian'], indent=1))
+        Path(args.out).write_text(json.dumps(output['hamiltonian'], indent=1), encoding='utf-8')
         output['written_to'] = args.out
     print(json.dumps(output, allow_nan=False, separators=(',', ':')))
     return code if not output.get('ok') else 0
@@ -471,7 +471,7 @@ def _task(args):
 def _hamiltonian_spec(args):
     if args.hamiltonian:
         path = Path(args.hamiltonian)
-        return json.loads(path.read_text()) if path.suffix == '.json' and path.exists() else args.hamiltonian
+        return json.loads(path.read_text(encoding="utf-8")) if path.suffix == '.json' and path.exists() else args.hamiltonian
     if not args.model:
         raise ValueError('give --hamiltonian FILE|EXPR or --model NAME')
     return {'model': args.model, 'lattice': args.lattice, 'size': [int(x) for x in args.size.split(',')],

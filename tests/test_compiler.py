@@ -100,7 +100,7 @@ def test_compile_refuses_annealers_and_oversized_circuits():
 
 
 def cli(*args):
-    done = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", *args], capture_output=True, text=True, timeout=60)
+    done = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", *args], capture_output=True, text=True, encoding="utf-8", timeout=60)
     return done.returncode, json.loads(done.stdout)
 
 

@@ -99,7 +99,7 @@ def test_cli_converge_reports_every_level(tmp_path):
     path.write_text(qasm)
     out = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", "run", str(path), "--observable", "Z62",
                           "--value-only", "--min-coefficient", "1e-2", "--converge", "1e-3", "--levels", "6"],
-                         capture_output=True, text=True, env=dict(os.environ), check=True)
+                         capture_output=True, text=True, encoding="utf-8", env=dict(os.environ), check=True)
     data = json.loads(out.stdout)
     convergence = data["convergence"]
     assert convergence["converged"] and len(convergence["levels"]) >= 2

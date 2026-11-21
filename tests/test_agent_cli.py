@@ -19,7 +19,7 @@ cx q[0], q[1];
 
 
 def cli(args, stdin=None):
-    done = subprocess.run([sys.executable, '-m', 'quantum_circuit_simulator', *args], input=stdin, text=True,
+    done = subprocess.run([sys.executable, '-m', 'quantum_circuit_simulator', *args], input=stdin, text=True, encoding="utf-8",
                           capture_output=True, timeout=60)
     return done.returncode, done.stdout
 

@@ -19,7 +19,7 @@ def test_models_have_the_expected_terms_and_round_trip(tmp_path):
     path = tmp_path / "h.json"
     xxz.to_json(path)
     again = hm.load(path)
-    assert again.terms == xxz.terms and json.loads(path.read_text())["schema"] == "quantum-circuit-simulator-hamiltonian/1"
+    assert again.terms == xxz.terms and json.loads(path.read_text(encoding="utf-8"))["schema"] == "quantum-circuit-simulator-hamiltonian/1"
     assert hm.load("0.5*Z0*Z1 - X2").n_qubits == 3
     assert hm.load(xxz.to_string(), n_qubits=6).terms == xxz.terms
     assert hm.load(cut.to_string(), n_qubits=3).offset == -1.5

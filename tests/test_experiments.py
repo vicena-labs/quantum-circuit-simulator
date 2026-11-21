@@ -85,7 +85,7 @@ def test_sweep_of_an_openqasm_circuit_with_a_custom_device():
 
 
 def cli(*args):
-    done = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", *args], capture_output=True, text=True, timeout=120)
+    done = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", *args], capture_output=True, text=True, encoding="utf-8", timeout=120)
     return done.returncode, done.stdout
 
 

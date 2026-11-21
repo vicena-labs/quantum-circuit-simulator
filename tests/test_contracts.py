@@ -65,7 +65,7 @@ def test_compile_schedule_and_noise_budget_are_consistent():
 
 def cli(*args, stdin=None):
     done = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", *args], input=stdin, capture_output=True,
-                          text=True, timeout=300)
+                          text=True, encoding="utf-8", timeout=300)
     return done.returncode, json.loads(done.stdout), done.stderr
 
 
@@ -101,7 +101,7 @@ def test_sweep_progress_and_checkpoint_resume(tmp_path):
     assert code == 0 and len(events) == len(first["rows"]) == 6 and events[-1]["done"] == 6
     code, second, _ = cli(*args)
     assert [r["value"] for r in second["rows"]] == [r["value"] for r in first["rows"]]
-    assert len(path.read_text().splitlines()) == 1 + 6
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 1 + 6
     with pytest.raises(ValueError, match="different request"):
         Checkpoint(path, {"something": "else"})
 
@@ -109,7 +109,7 @@ def test_sweep_progress_and_checkpoint_resume(tmp_path):
 def test_sweep_resumes_without_recomputing(tmp_path):
     path = tmp_path / "s.jsonl"
     rows = sweep("ghz", sizes=[4], devices=["line:n=4"], noise_scales=[1], checkpoint=path).rows
-    lines = path.read_text().splitlines()
+    lines = path.read_text(encoding="utf-8").splitlines()
     stored = json.loads(lines[2])
     stored["row"]["value"] = 123.0          # a resumed point is read, not recomputed
     path.write_text("\n".join(lines[:2] + [json.dumps(stored)]) + "\n")

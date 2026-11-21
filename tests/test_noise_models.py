@@ -137,11 +137,11 @@ def test_design_and_sweep_commands_with_new_options(tmp_path):
     out = tmp_path / "chip.json"
     done = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", "design", "--base", "heavy-hex-127", "--expand-to", "300",
                            "--qubit-spread", "0.2", "--spectator-error", "1e-3", "--zz-hz", "5e4", "--out", str(out)],
-                          capture_output=True, text=True, timeout=120)
+                          capture_output=True, text=True, encoding="utf-8", timeout=120)
     facts = json.loads(done.stdout)
     assert done.returncode == 0 and facts["n_qubits"] >= 300 and facts["qubits_with_own_noise"] == facts["n_qubits"]
     assert facts["crosstalk"] == {"spectator_error": 1e-3, "zz_hz": 5e4}
     done = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", "sweep", "--family", "ghz", "--sizes", "6,20",
-                           "--device", f"fit:{out}", "--noise-scales", "1"], capture_output=True, text=True, timeout=300)
+                           "--device", f"fit:{out}", "--noise-scales", "1"], capture_output=True, text=True, encoding="utf-8", timeout=300)
     rows = json.loads(done.stdout)["rows"]
     assert done.returncode == 0 and all("error" not in r for r in rows) and len(rows) == 4

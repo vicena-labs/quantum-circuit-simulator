@@ -106,9 +106,9 @@ def test_cad_files_are_valid(tmp_path):
     cell = gdstk.read_gds(str(tmp_path / "torino.gds")).top_level()[0]
     assert len(cell.paths) == 150 and len(cell.labels) == 133
     cad.write(chip, tmp_path / "torino.svg")
-    assert (tmp_path / "torino.svg").read_text().startswith("<svg")
+    assert (tmp_path / "torino.svg").read_text(encoding="utf-8").startswith("<svg")
     cad.write(devices.get("all-to-all-ions", n=6), tmp_path / "ions.dxf")
-    assert "ENTITIES" in (tmp_path / "ions.dxf").read_text()
+    assert "ENTITIES" in (tmp_path / "ions.dxf").read_text(encoding="utf-8")
     assert cad._real8(1e-3)[0] == 0x3E and cad._real8(1e-9)[0] == 0x39   # GDSII excess-64 exponents
     # STL: closed, outward-facing solids, so the signed volume is the slab plus the raised metal.
     cad.write(chip, tmp_path / "torino.stl")
@@ -144,7 +144,7 @@ def test_annealing_finds_ground_states_directly_and_on_a_chip():
 
 
 def cli(*args):
-    done = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", *args], capture_output=True, text=True,
+    done = subprocess.run([sys.executable, "-m", "quantum_circuit_simulator", *args], capture_output=True, text=True, encoding="utf-8",
                           timeout=300)
     return done.returncode, json.loads(done.stdout)
 
@@ -153,7 +153,7 @@ def test_cli_lists_library_and_writes_cad(tmp_path):
     code, out = cli("circuits", "--suite", "MQT Bench", "--search", "qft")
     assert code == 0 and out["schema"] == "quantum-circuit-simulator-circuits/1" and out["library"]
     code, out = cli("circuits", "mqt/ghz", "--size", "4", "--out", str(tmp_path / "ghz.qasm"))
-    assert code == 0 and (tmp_path / "ghz.qasm").read_text().startswith("OPENQASM 2.0")
+    assert code == 0 and (tmp_path / "ghz.qasm").read_text(encoding="utf-8").startswith("OPENQASM 2.0")
     code, out = cli("cad", "google_willow_pink", "--out", str(tmp_path / "willow.gds"))
     assert code == 0 and out["qubits"] == 105 and (tmp_path / "willow.gds").stat().st_size > 10_000
 

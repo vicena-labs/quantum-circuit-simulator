@@ -128,7 +128,7 @@ class Hamiltonian:
     def to_json(self, path=None):
         text = json.dumps(self.to_dict(), indent=1)
         if path is not None:
-            Path(path).write_text(text)
+            Path(path).write_text(text, encoding="utf-8")
         return text
 
     def to_string(self):
@@ -142,7 +142,7 @@ def load(source, n_qubits=None, name=None):
     if isinstance(source, Hamiltonian):
         return source
     if isinstance(source, (str, Path)) and str(source).endswith(".json") and Path(source).exists():
-        source = json.loads(Path(source).read_text())
+        source = json.loads(Path(source).read_text(encoding="utf-8"))
     if isinstance(source, dict) and "terms" in source:
         terms = [(t["coefficient"], {int(q): a for q, a in t["pauli"].items()}) for t in source["terms"]]
         return Hamiltonian(n_qubits or source.get("n_qubits") or _width(terms), terms,
