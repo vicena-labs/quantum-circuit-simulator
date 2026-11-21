@@ -301,7 +301,7 @@ def _worker(mode, payload, timeout, options=None, progress=False):
     return child.returncode, json.loads(collected[0])
 
 
-TASK_COMMANDS = ('hamiltonian', 'optimize', 'sample', 'statevector', 'zne', 'shot-noise')
+TASK_COMMANDS = ('hamiltonian', 'optimize', 'sample', 'statevector', 'zne', 'shot-noise', 'anneal', 'circuits', 'cad')
 
 
 def _task_commands(sub):
@@ -363,6 +363,30 @@ def _task_commands(sub):
     z.add_argument('--fit', choices=('linear', 'quadratic', 'richardson', 'exponential'), default='richardson')
     device_flags(z, required=True)
     common(z)
+    an = sub.add_parser('anneal', help='Anneal an Ising/QUBO problem, embedded on a D-Wave-style chip or directly')
+    hamiltonian_flags(an)
+    an.add_argument('--problem', help='Problem JSON: {"vartype": "SPIN"|"BINARY", "linear": {...}, "quadratic": [[u, v, b]]}')
+    an.add_argument('--device', help='dwave-advantage, dwave-advantage2, chimera, pegasus, zephyr or a .json file; '
+                                     'omit to sample the problem directly')
+    an.add_argument('--sampler', choices=('sqa', 'sa', 'tabu', 'exact'), default='sqa',
+                    help='sqa: simulated quantum annealing (path-integral Monte Carlo); sa: simulated annealing')
+    an.add_argument('--num-reads', type=int, default=100)
+    an.add_argument('--num-sweeps', type=int)
+    an.add_argument('--chain-strength', type=float)
+    an.add_argument('--control-noise', type=float, default=0.0, help='Gaussian error on every h and J on the chip')
+    common(an)
+    ci = sub.add_parser('circuits', help='List circuit families and the benchmark library, or print one circuit')
+    ci.add_argument('name', nargs='?', help='A library circuit, e.g. mqt/qft; omit to list them')
+    ci.add_argument('--size', type=int, help='Smallest bundled size with at least this many qubits')
+    ci.add_argument('--suite', help='"MQT Bench" or "Supermarq"')
+    ci.add_argument('--search', help='Filter library names')
+    ci.add_argument('--out', help='Write the OpenQASM to this file')
+    common(ci, 60.0)
+    cd = sub.add_parser('cad', help='Write a chip layout as GDSII, DXF or SVG (placement layout, not a mask)')
+    cd.add_argument('device', help='Any device name (layout or real chip) or a device .json file')
+    cd.add_argument('--out', required=True, help='Output file; the extension picks the format: .gds, .dxf or .svg')
+    cd.add_argument('--pitch', type=float, default=800.0, help='Micrometres between neighbouring lattice points')
+    common(cd, 120.0)
     sn = sub.add_parser('shot-noise', help='Standard error of a hardware estimate with a given number of shots')
     circuit_flags(sn)
     sn.add_argument('--observable', required=True, help='A Pauli sum, or a Hamiltonian .json file')
@@ -375,13 +399,24 @@ def _task(args):
     """Build a task specification from the flags, run it in the worker and print the result."""
     try:
         spec = {'kind': args.command, 'seed': args.seed}
-        if args.command in ('hamiltonian', 'optimize'):
+        if args.command in ('hamiltonian', 'optimize') or (args.command == 'anneal' and not args.problem):
             spec['hamiltonian'] = _hamiltonian_spec(args)
+        if args.command == 'anneal':
+            if args.problem:
+                spec['problem'] = json.loads(Path(args.problem).read_text())
+            if args.device:
+                spec.update(_device_spec(args.device))
+            spec.update(sampler=args.sampler, num_reads=args.num_reads, num_sweeps=args.num_sweeps,
+                        chain_strength=args.chain_strength, control_noise=args.control_noise)
+        elif args.command == 'circuits':
+            spec.update(name=args.name, size=args.size, suite=args.suite, search=args.search)
+        elif args.command == 'cad':
+            spec.update(_device_spec(args.device), out=str(Path(args.out).resolve()), pitch=args.pitch)
         if hasattr(args, 'input'):
             spec['circuit'] = _read(args.input).decode('utf-8')
             if args.values:
                 spec['values'] = json.loads(args.values)
-        if getattr(args, 'device', None):
+        if getattr(args, 'device', None) and args.command not in ('anneal', 'cad'):
             spec.update(device=_chip(args.device).to_dict(), noise_scale=args.noise_scale, router=args.router)
         if args.command == 'optimize':
             spec.update(algorithm=args.algorithm, method=args.method, steps=args.steps, depth=args.depth,
@@ -402,6 +437,9 @@ def _task(args):
     except subprocess.TimeoutExpired:
         return emit_error('Timeout', f'{args.command} exceeded its deadline', 124,
                           hint='Raise --timeout, or reduce the size, steps or shots.')
+    if output.get('ok') and args.command == 'circuits' and args.name and args.out:
+        Path(args.out).write_text(output['qasm'])
+        output['written_to'] = args.out
     if output.get('ok') and args.command == 'hamiltonian' and getattr(args, 'out', None):
         Path(args.out).write_text(json.dumps(output['hamiltonian'], indent=1))
         output['written_to'] = args.out
@@ -417,6 +455,15 @@ def _hamiltonian_spec(args):
         raise ValueError('give --hamiltonian FILE|EXPR or --model NAME')
     return {'model': args.model, 'lattice': args.lattice, 'size': [int(x) for x in args.size.split(',')],
             'periodic': args.periodic, 'parameters': _params(args.model_param), 'seed': args.model_seed}
+
+
+def _device_spec(name):
+    """A device for a task: by name when it needs no parameters (cheap to send), else its description."""
+    from . import devices
+    if ':' not in name and not name.endswith('.json'):
+        devices.get(name)   # fail here, with the CLI's hint, if the name is unknown
+        return {'device_name': name}
+    return {'device': _chip(name).to_dict()}
 
 
 def _chip(spec):

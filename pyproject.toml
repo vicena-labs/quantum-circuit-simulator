@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 dependencies = ["numpy>=1.26,<3"]
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md"]
-keywords = ["quantum computing", "quantum circuit simulator", "pauli propagation", "noise", "gradients", "vqe", "qaoa", "chip design", "ai agents"]
+keywords = ["quantum computing", "quantum annealing", "ibm quantum", "google quantum", "gdsii", "quantum circuit simulator", "pauli propagation", "noise", "gradients", "vqe", "qaoa", "chip design", "ai agents"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
@@ -29,10 +29,11 @@ Changelog = "https://github.com/vicena-labs/quantum-circuit-simulator/blob/main/
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
 qiskit = ["qiskit>=1.3"]
-dwave = ["dwave-networkx>=0.8"]
+dwave = ["dwave-networkx>=0.8", "dimod>=0.12", "dwave-samplers>=1.4", "dwave-system>=1.24", "minorminer>=0.2"]
 stim = ["stim>=1.14"]
 algorithms = ["scipy>=1.11"]
-all = ["qiskit>=1.3", "dwave-networkx>=0.8", "stim>=1.14", "scipy>=1.11"]
+all = ["qiskit>=1.3", "dwave-networkx>=0.8", "dimod>=0.12", "dwave-samplers>=1.4", "dwave-system>=1.24",
+       "minorminer>=0.2", "stim>=1.14", "scipy>=1.11"]
 
 [project.scripts]
 quantum-circuit-simulator = "quantum_circuit_simulator.cli:main"
@@ -41,7 +42,7 @@ quantum-circuit-simulator = "quantum_circuit_simulator.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-quantum_circuit_simulator = ["AGENT_GUIDE.md"]
+quantum_circuit_simulator = ["AGENT_GUIDE.md", "data/*.json.gz"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

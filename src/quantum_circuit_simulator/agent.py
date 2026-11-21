@@ -51,6 +51,14 @@ def capabilities():
         "algorithms": "`quantum-circuit-simulator hamiltonian` (models and loaders), `optimize` (VQE or QAOA with exact gradients, "
                       "Adam, gradient descent, SPSA or L-BFGS, full trace), `zne` (zero-noise extrapolation on a device), "
                       "`shot-noise` (standard error of a hardware run with N shots)",
+        "real_chips": "65 IBM chips (Heron, Eagle, Falcon, ...) and 3 Google chips from calibration snapshots, "
+                      "e.g. ibm_fez, ibm_torino, google_willow_pink; listed by `quantum-circuit-simulator devices`",
+        "circuit_library": "`quantum-circuit-simulator circuits`: MQT Bench and Supermarq benchmarks up to 127 qubits, "
+                           "and families including IBM's 127-qubit kicked-Ising utility experiment",
+        "cad": "`quantum-circuit-simulator cad DEVICE --out chip.gds|.dxf|.svg`: a placement layout of any chip",
+        "annealing": "`quantum-circuit-simulator anneal`: Ising/QUBO problems embedded on dwave-advantage, "
+                     "dwave-advantage2, chimera, pegasus or zephyr; simulated quantum annealing, simulated "
+                     "annealing, tabu or exact; needs the dwave extra",
         "states": "`quantum-circuit-simulator sample` (bitstrings with noise and readout; exact density matrix up to 10 qubits, "
                   "trajectories up to 28, Stim for larger Clifford circuits) and `statevector` (amplitudes)",
         "outputs": {"schema": "every result carries schema quantum-circuit-simulator-<kind>/1 and provenance",

@@ -10,7 +10,7 @@ from quantum_circuit_simulator import Circuit, devices
 from quantum_circuit_simulator._core._reference import depolarizing_ptm
 from quantum_circuit_simulator.interop import ConversionError, expectation
 
-OFFLINE = [name for name in devices.CATALOG if name not in ("pegasus", "zephyr")]
+OFFLINE = [name for name in devices.CATALOG if name not in ("pegasus", "zephyr", "dwave-advantage", "dwave-advantage2")]
 
 
 @pytest.mark.parametrize("name", OFFLINE)

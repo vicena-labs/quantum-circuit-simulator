@@ -36,7 +36,7 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 
 from .api import Circuit
-from .interop import (ConversionError, Converted, _DECOMPOSE, _emit, _lower, parse_observable, readout_expand,
+from .interop import (GATE_END, ConversionError, Converted, _DECOMPOSE, _emit, _lower, parse_observable, readout_expand,
                       source_instructions)
 
 TWO_QUBIT = {"CZ", "ECR"}
@@ -73,8 +73,16 @@ class Compiled:
 
 
 def compile_circuit(circuit, device, *, layout="greedy", router="greedy", noise=True, idle_noise=True,
-                    noise_scale=1.0, values=None, max_terms=1_000_000):
-    """Compile OpenQASM text, a Qiskit circuit or a gates-only `Circuit` onto `device`."""
+                    noise_scale=1.0, values=None, max_terms=1_000_000, gate_model="thermal"):
+    """Compile OpenQASM text, a Qiskit circuit or a gates-only `Circuit` onto `device`.
+
+    gate_model "thermal" (default) gives each gate T1/T2 relaxation for its duration and a
+    depolarizing error for the rest of its measured infidelity, as hardware errors arise and
+    as Qiskit Aer models them; "depolarizing" puts the whole infidelity into a depolarizing
+    channel with the same average fidelity.
+    """
+    if gate_model not in ("thermal", "depolarizing"):
+        raise ValueError('gate_model must be "thermal" or "depolarizing"')
     if device.family == "annealer":
         raise ConversionError(f"{device.name} is an annealer; circuits cannot be compiled onto it",
                               "choose a gate-model device from `quantum-circuit-simulator devices`")
@@ -95,7 +103,7 @@ def compile_circuit(circuit, device, *, layout="greedy", router="greedy", noise=
         raise ValueError('router must be "greedy" or "sabre"')
     gate_noise = device.noise_model(noise_scale) if noise else None
     scheduled, facts = _schedule(routed_ops, device, gate_noise, bool(idle_noise and noise and noise_scale > 0),
-                                 noise_scale if noise else 0.0)
+                                 noise_scale if noise else 0.0, thermal=gate_model == "thermal")
     readout = device.readout_map(noise_scale) if noise else None  # per qubit where the chip says so
     converted = _emit(device.n_qubits, scheduled, params, None, max_terms)  # readout acts on observables
     schedule = facts.pop("schedule")
@@ -322,8 +330,9 @@ def _route(ops, layout, device):
                 raise ConversionError(f"qubits {physical} of {device.name} are not connected",
                                       "choose a connected device or another layout")
             for a, b in zip(path, path[1:-1]):  # walk the first qubit to beside the second
-                for sw_prim, sw_wires, _ in _DECOMPOSE["swap"]([a, b], []):
-                    routed.append((sw_prim, list(sw_wires), None, -1, 1))
+                for c, t in ((a, b), (b, a), (a, b)):   # a SWAP is three CX, each a gate with its own error
+                    routed += [(sw_prim, list(sw_wires), None, -1, 1) for sw_prim, sw_wires, _ in _DECOMPOSE["cx"]([c, t], [])]
+                    routed.append((GATE_END, [c, t], None, -1, 1))
                 swaps += 1
                 qa, qb = p2l.get(a), p2l.get(b)
                 if qa is not None:
@@ -392,7 +401,7 @@ def _sabre(circuit, device, layout, values):
 
 
 # ---------------------------------------------------------------- schedule and noise
-def _schedule(ops, device, noise, idle, scale=1.0):
+def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
     """Insert gate errors, crosstalk and idle relaxation; return ops and timing facts.
 
     Errors follow each qubit's and coupler's own values where the chip gives
@@ -448,6 +457,26 @@ def _schedule(ops, device, noise, idle, scale=1.0):
                 coherence[w] = (t1 / scale, t2 / scale)
         return coherence[w]
 
+    def gate_error(wires, error, duration):
+        """A gate's infidelity: relaxation during it when thermal, depolarizing for the remainder."""
+        d = 2 ** len(wires)
+        if thermal and duration > 0 and all(relax_times(w) for w in wires):
+            fidelity = 1.0   # process fidelity of the relaxation, Tr R / d^2, a product over wires
+            for w in wires:
+                t1, t2 = relax_times(w)
+                out.append(("RELAX", [w], (duration, t1, t2), -1, 1))
+                fidelity *= (1 + math.exp(-duration / t1) + 2 * math.exp(-duration / t2)) / 4
+            error = max(0.0, error - d * (1 - fidelity) / (d + 1))   # average infidelity r = d (1 - F) / (d + 1)
+        if error:
+            out.append(("DEPOL", wires, min(1 - 1 / d ** 2, error * (d + 1) / d), -1, 1))
+
+    pending = {}   # coupler -> (wires, infidelity, duration) of a two-qubit gate whose source gate has not ended
+
+    def flush(wires):
+        """Apply the pending two-qubit errors on couplers that share a wire with `wires`."""
+        for pair in [p for p in pending if set(p) & set(wires)]:
+            gate_error(*pending.pop(pair))
+
     busy, started, level = {}, set(), {}
     out, one, two = [], 0, 0
     schedule = []
@@ -466,6 +495,11 @@ def _schedule(ops, device, noise, idle, scale=1.0):
         charge(w, "idle_error", (3 - math.exp(-gap / t1) - 2 * math.exp(-gap / t2)) / 6, "idle")
 
     for prim, wires, base, index, weight in ops:
+        if prim == GATE_END:
+            flush(wires)
+            continue
+        if len(wires) == 2:
+            flush(wires)   # a new two-qubit gate on these wires: the previous one has certainly ended
         virtual = prim == "RZ"
         duration = 0.0 if virtual else durations[len(wires)]
         start = max(busy.get(w, 0.0) for w in wires)
@@ -495,7 +529,7 @@ def _schedule(ops, device, noise, idle, scale=1.0):
             entry = couplers.setdefault(key, {})
             entry["gates"] = entry.get("gates", 0) + 1
             if error:
-                out.append(("DEPOL", wires, min(0.9375, error * scale * 5 / 4), -1, 1))
+                pending[(min(wires), max(wires))] = (wires, error * scale, duration)
                 entry["gate_error"] = entry.get("gate_error", 0.0) + error * scale
                 totals["gate_2q"] += error * scale
             if spectator:
@@ -509,7 +543,7 @@ def _schedule(ops, device, noise, idle, scale=1.0):
             error = device.qubit(wires[0], "error_1q") if scale else 0.
             charge(wires[0], "gates_1q", 1)
             if error:
-                out.append(("DEPOL", wires, min(0.75, error * scale * 3 / 2), -1, 1))
+                gate_error(wires, error * scale, duration)
                 charge(wires[0], "gate_error_1q", error * scale, "gate_1q")
         for w in wires:
             busy[w] = start + duration
@@ -522,6 +556,7 @@ def _schedule(ops, device, noise, idle, scale=1.0):
             pair = (min(wires), max(wires))
             if pair in zz_clock:
                 zz_clock[pair] = max(zz_clock[pair], start + duration)
+    flush(list(range(device.n_qubits)))
     end = max(busy.values(), default=0.0)
     if zz_rate:
         for w in sorted(started):

@@ -14,6 +14,8 @@
 - **Develops algorithms.** It builds Hamiltonians, Trotter and QAOA circuits, runs VQE and QAOA with exact gradients in up to 4,096 shared parameters, applies zero-noise extrapolation, and estimates the shot budget a hardware run needs.
 - **Designs hardware.** It builds chips (modules, defects, physics-derived errors, crosstalk), grows them to larger sizes with the same architecture, and ranks designs on real workloads.
 - **Returns states and samples.** It gives amplitudes, density matrices and measured bitstrings with noise, up to 28 qubits, and any size for Clifford circuits.
+- **Ships real chips and standard circuits.** It includes 65 IBM chips and 3 Google chips from their measured calibrations, D-Wave Advantage-style annealers, and over a hundred benchmark circuits from MQT Bench and Supermarq.
+- **Draws chips as CAD files.** It writes any chip, real or designed, as a GDSII, DXF or SVG layout.
 
 ## How it solves: Pauli cones
 
@@ -91,6 +93,25 @@ quantum-circuit-simulator statevector circuit.qasm
 ## Output contracts
 
 Every command prints one JSON document tagged `schema: quantum-circuit-simulator-<kind>/1` with a `provenance` record (package and library versions, platform, SHA-256 of the canonical request, seed, UTC time), so a result can be reproduced and cited. Compiling reports a noise budget per qubit and per coupler (gate, idle, spectator and readout errors and ZZ phase) and, with `--schedule`, every gate's physical qubits, start time and duration; chips carry qubit coordinates in lattice units. Long tasks stream JSON-line progress events on standard error with `--progress`, and sweeps resume from a `--checkpoint` file. Fields are only added within a schema version.
+
+## Real chips, benchmark circuits, CAD and annealing
+
+**Real chips.** `devices.get("ibm_fez")` returns IBM's 156-qubit Heron r2 chip, and `devices.get("google_willow_pink")` Google's 105-qubit Willow chip. Each is built from a published calibration snapshot: every qubit's T1, T2, readout and gate error, every coupler's two-qubit error, gate durations, IBM's qubit frequencies and anharmonicities, and the chip's real coordinates. The package includes 65 IBM chips (Heron, Eagle, Falcon, Hummingbird and older) and Google's Rainbow, Weber and Willow Pink. `quantum-circuit-simulator devices` lists them with their snapshot dates. The compiler gives each gate T1/T2 relaxation for its duration and depolarizing noise for the rest of its measured error, as hardware errors arise. On IBM snapshots it agrees with Qiskit Aer's noise model to within 0.01, and it adds the relaxation of idle qubits, which Aer's backend model leaves out.
+
+**Benchmark circuits.** `circuits.library()` lists over a hundred circuits from MQT Bench (QFT, Grover, QPE, amplitude estimation, arithmetic, QAOA, VQE ansätze, quantum walks and more) and Supermarq, at sizes up to 127 qubits, in this package's gate set. `circuits.load("mqt/qft", 16)` returns one as OpenQASM, and sweeps take library names like families. `family("kicked-ising")` is IBM's 127-qubit utility experiment.
+
+**CAD.** `cad.write(chip, "chip.gds")` writes a chip as GDSII (also DXF and SVG): Xmon-style transmon crosses, coupler traces and readout pads at the chip's coordinates, or sites for ions, atoms and annealers, on separate layers in micrometres. It is a placement layout for drawing, documenting and starting a design, not a fabrication-ready mask; full electromagnetic layout is the job of tools such as Qiskit Metal or KQCircuits.
+
+**Annealing.** `annealing.anneal(problem, devices.get("dwave-advantage"))` embeds an Ising or QUBO problem on a D-Wave Advantage-style Pegasus chip (or Advantage2 Zephyr, Chimera, Pegasus, Zephyr) with minorminer, rescales it to the chip's h and J ranges, can add control errors, and samples it with simulated quantum annealing (path-integral Monte Carlo), simulated annealing or tabu search. It reports the best energy, the exact ground energy and its probability on small problems, chain lengths and chain breaks. These are models of an annealer, not the device. Needs `pip install "quantum-circuit-simulator[dwave]"`.
+
+```bash
+quantum-circuit-simulator devices                                     # layouts and real chips
+quantum-circuit-simulator run circuit.qasm --observable "Z0*Z1" --device ibm_fez --compile
+quantum-circuit-simulator circuits --suite "MQT Bench" --search qft    # the benchmark library
+quantum-circuit-simulator sweep --family mqt/qft --sizes 8,16 --device ibm_torino --device google_willow_pink
+quantum-circuit-simulator cad ibm_fez --out fez.gds
+quantum-circuit-simulator anneal --model maxcut --lattice regular --size 60,3 --device dwave-advantage
+```
 
 ## Chips
 

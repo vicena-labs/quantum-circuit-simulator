@@ -29,6 +29,7 @@ SUPPORTED_GATES = sorted(NATIVE_ONE | ROTATIONS | {
     "id", "sxdg", "s", "sdg", "t", "tdg", "p", "u1", "u2", "u3", "u", "r", "cx", "cy", "cz",
     "ecr", "swap", "rzz", "rxx", "ryy", "rzx", "cp", "cu1", "crx", "cry", "crz", "ch", "ccx", "cswap"})
 _IGNORED = {"barrier", "delay", "id", "i"}
+GATE_END = "END"   # marker op: a multi-qubit source gate ends here (no operation of its own)
 MAX_SHARED_PARAMETERS = 4096
 
 
@@ -271,6 +272,10 @@ def _lower(instructions, noise=None):
                                   "install Qiskit so unknown gates are transpiled, or use: " + ", ".join(SUPPORTED_GATES))
         for prim, wires, angle in _DECOMPOSE[name](qubits, angles):
             ops.append((prim, list(wires), angle))
+        if len(qubits) >= 2:
+            # Marks the end of a multi-qubit source gate: the compiler applies the gate's error here,
+            # after the one-qubit frame changes of its decomposition, as for a native gate.
+            ops.append((GATE_END, list(qubits), None))
         if noise and len(qubits) == 1 and noise.depolarizing_1q:
             ops.append(("DEPOL", list(qubits), noise.depolarizing_1q))
         if noise and len(qubits) == 2 and noise.depolarizing_2q:
@@ -302,6 +307,8 @@ def _emit(n, ops, params, readout, max_terms):
     """A `Circuit` from native ops. "RELAX" ops carry (duration, t1, t2) as base."""
     c = Circuit(n, len(params), max_terms)
     for prim, wires, base, index, scale in ops:
+        if prim == GATE_END:
+            continue
         if prim == "DEPOL":
             c.depolarize(wires, base)
         elif prim == "RELAX":

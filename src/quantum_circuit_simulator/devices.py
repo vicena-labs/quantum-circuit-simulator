@@ -21,10 +21,13 @@ Names describe architecture styles and do not imply a vendor's endorsement.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import math
 from collections import deque
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
+from importlib import resources
 
 from .topology import Topology
 
@@ -402,6 +405,7 @@ def _chimera_edges(m, n, t):
     return 2 * m * n * t, edges, coordinates
 
 
+@lru_cache(maxsize=8)
 def _dwave_graph(kind, size, t):
     try:
         import dwave_networkx as dnx
@@ -457,6 +461,14 @@ def spring_layout(n, edges, iterations=200, seed=0):
 
 SC_GATES = {"one_qubit": ["rz", "sx", "x"], "two_qubit": ["cz"]}
 
+
+def _annealer(name, size_edges, description, parameters):
+    from .annealing import ANNEALER_PROPERTIES
+    return _device(name, "annealer", size_edges, {"one_qubit": [], "two_qubit": []}, dict(), description,
+                   {**parameters, "annealer": dict(ANNEALER_PROPERTIES)},
+                   source="Graph from dwave-networkx (Apache-2.0); h, J and annealing-time ranges as published "
+                          "for D-Wave's Advantage-generation solvers.")
+
 # name -> (builder(**params), default params, one-line description)
 CATALOG = {
     "heavy-hex-127": (lambda: _device(
@@ -502,6 +514,18 @@ CATALOG = {
         "D-Wave-style Pegasus annealer graph, built by dwave-networkx.", {"m": m},
         source="dwave-networkx pegasus_graph."),
         {"m": 16}, "D-Wave-style Pegasus annealer graph (needs dwave-networkx)"),
+    "dwave-advantage": (lambda: _annealer(
+        "dwave-advantage", _dwave_graph("pegasus", 16, None),
+        "D-Wave Advantage-style annealer: Pegasus P16, 5,640 qubits, 15 couplers per qubit, with the "
+        "Advantage generation's published h and J ranges and annealing times. Every qubit is present; "
+        "a real solver reports a few inactive ones.", {"m": 16}),
+        {}, "D-Wave Advantage-style annealer, Pegasus P16, 5,640 qubits (needs dwave-networkx)"),
+    "dwave-advantage2": (lambda: _annealer(
+        "dwave-advantage2", _dwave_graph("zephyr", 12, 4),
+        "D-Wave Advantage2-style annealer: Zephyr Z12, 4,800 qubits, 20 couplers per qubit, with the "
+        "Advantage generation's published h and J ranges and annealing times. Every qubit is present.",
+        {"m": 12, "t": 4}),
+        {}, "D-Wave Advantage2-style annealer, Zephyr Z12, 4,800 qubits (needs dwave-networkx)"),
     "zephyr": (lambda m=12, t=4: _device(
         f"zephyr-{m}x{t}", "annealer", _dwave_graph("zephyr", m, t), {"one_qubit": [], "two_qubit": []}, dict(),
         "D-Wave-style Zephyr annealer graph, built by dwave-networkx.", {"m": m, "t": t},
@@ -511,22 +535,42 @@ CATALOG = {
 
 
 def catalog():
-    """Every catalogue entry: name, description, family and default parameters."""
+    """Every device: generated layouts (with their default parameters) and real chips (calibration snapshots)."""
     families = {"heavy-hex-127": "superconducting", "heavy-hex": "superconducting",
                 "square-grid": "superconducting", "line": "superconducting", "all-to-all-ions": "trapped-ion",
                 "neutral-atom-grid": "neutral-atom", "chimera": "annealer", "pegasus": "annealer",
-                "zephyr": "annealer"}
-    return [{"name": name, "family": families[name], "description": text, "parameters": defaults}
-            for name, (_, defaults, text) in CATALOG.items()]
+                "zephyr": "annealer", "dwave-advantage": "annealer", "dwave-advantage2": "annealer"}
+    generated = [{"name": name, "kind": "layout", "family": families[name], "description": text,
+                  "parameters": defaults} for name, (_, defaults, text) in CATALOG.items()]
+    real = [{"name": name, "kind": "real", "family": d["family"], "n_qubits": d["n_qubits"],
+             "description": d["description"], "snapshot": d["parameters"]["hardware"].get("snapshot_date"),
+             "processor": d["parameters"]["hardware"].get("processor")} for name, d in sorted(real_devices().items())]
+    return generated + real
+
+
+@lru_cache(maxsize=1)
+def real_devices():
+    """Real chips from bundled calibration snapshots (IBM, Google): name -> device description."""
+    path = resources.files("quantum_circuit_simulator") / "data" / "devices.json.gz"
+    if not path.is_file():
+        return {}
+    with path.open("rb") as raw, gzip.open(raw, "rt", encoding="utf-8") as f:
+        return json.load(f)["devices"]
 
 
 def get(name, **parameters):
-    """Build a catalogue device, or load a custom one from a JSON file path."""
+    """A generated catalogue layout, a real chip from a calibration snapshot, or a device JSON file."""
     if name.endswith(".json"):
         with open(name, encoding="utf-8") as f:
             return Device.from_dict(json.load(f))
+    if name in real_devices():
+        if parameters:
+            raise ValueError(f"{name} is a real chip and takes no parameters; derive variants with "
+                             "design.vary_qubits, Device.scaled_noise or Device.with_noise")
+        return Device.from_dict(real_devices()[name])
     if name not in CATALOG:
-        raise KeyError(f"unknown device {name!r}; choose from {sorted(CATALOG)} or pass a .json file")
+        raise KeyError(f"unknown device {name!r}; run `quantum-circuit-simulator devices` for layouts and real "
+                       "chips, or pass a .json file")
     builder, defaults, _ = CATALOG[name]
     unknown = set(parameters) - set(defaults)
     if unknown:

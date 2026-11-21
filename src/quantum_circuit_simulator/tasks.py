@@ -12,7 +12,7 @@ import numpy as np
 
 from .contracts import Progress
 
-KINDS = ("hamiltonian", "sample", "statevector", "optimize", "zne", "shot-noise")
+KINDS = ("hamiltonian", "sample", "statevector", "optimize", "zne", "shot-noise", "anneal", "circuits", "cad")
 MAX_STATEVECTOR_OUTPUT_QUBITS = 16   # 2^16 amplitudes is about 2 MB of JSON
 
 
@@ -22,7 +22,8 @@ def run(spec, progress=False):
     if kind not in KINDS:
         raise ValueError(f"unknown task kind {kind!r}; choose from {', '.join(KINDS)}")
     handler = {"hamiltonian": _hamiltonian, "sample": _sample, "statevector": _statevector,
-               "optimize": _optimize, "zne": _zne, "shot-noise": _shot_noise}[kind]
+               "optimize": _optimize, "zne": _zne, "shot-noise": _shot_noise, "anneal": _anneal,
+               "circuits": _circuits, "cad": _cad}[kind]
     return kind, handler(spec, progress)
 
 
@@ -114,3 +115,32 @@ def _shot_noise(spec, progress):
     from .algorithms import shot_noise
     return shot_noise(spec["circuit"], hamiltonian_of(spec["observable"]), int(spec.get("shots", 10_000)),
                       values=spec.get("values"), allocation=spec.get("allocation", "weighted"), seed=spec.get("seed"))
+
+
+def _anneal(spec, progress):
+    from . import annealing
+    from .devices import get
+    if "problem" in spec:
+        problem = annealing.Problem.from_dict(spec["problem"])
+    else:
+        problem = annealing.Problem.from_hamiltonian(hamiltonian_of(spec["hamiltonian"]))
+    device = get(spec["device_name"]) if spec.get("device_name") else _device(spec.get("device"))
+    return annealing.anneal(problem, device, sampler=spec.get("sampler", "sqa"), num_reads=spec.get("num_reads", 100),
+                            chain_strength=spec.get("chain_strength"), control_noise=spec.get("control_noise", 0.0),
+                            seed=spec.get("seed"), num_sweeps=spec.get("num_sweeps"))
+
+
+def _circuits(spec, progress):
+    from .circuits import FAMILIES, library, load
+    if spec.get("name"):
+        qasm = load(spec["name"], spec.get("size"))
+        return {"name": spec["name"], "qasm": qasm}
+    return {"families": {k: v[1] for k, v in FAMILIES.items()},
+            "library": library(spec.get("suite"), spec.get("search"))}
+
+
+def _cad(spec, progress):
+    from . import cad
+    from .devices import get
+    device = get(spec["device_name"]) if spec.get("device_name") else _device(spec["device"])
+    return cad.write(device, spec["out"], fmt=spec.get("format"), pitch=spec.get("pitch", 800.0))

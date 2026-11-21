@@ -56,8 +56,10 @@ def test_compiler_applies_each_couplers_own_error():
     qasm = 'OPENQASM 2.0; include "qelib1.inc"; qreg q[2]; h q[0]; cx q[0],q[1];'
     base = devices.get("line", n=2).with_noise(error_1q=0., error_2q=1e-3, readout=None)
     bad = base.with_noise(coupler_errors={(0, 1): 0.1})
-    good_value = compile_circuit(qasm, base, layout="trivial", idle_noise=False).expectation("Z0*Z1").value
-    bad_value = compile_circuit(qasm, bad, layout="trivial", idle_noise=False).expectation("Z0*Z1").value
+    good_value = compile_circuit(qasm, base, layout="trivial", idle_noise=False,
+                                 gate_model="depolarizing").expectation("Z0*Z1").value
+    bad_value = compile_circuit(qasm, bad, layout="trivial", idle_noise=False,
+                                gate_model="depolarizing").expectation("Z0*Z1").value
     # One CZ under two-qubit depolarizing p = 5r/4 scales Z0 Z1 by 1 - 16p/15.
     assert good_value == pytest.approx(1 - 16 * (1e-3 * 5 / 4) / 15, abs=1e-12)
     assert bad_value == pytest.approx(1 - 16 * (0.1 * 5 / 4) / 15, abs=1e-12)

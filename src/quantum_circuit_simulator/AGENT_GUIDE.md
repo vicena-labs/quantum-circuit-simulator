@@ -11,7 +11,7 @@ Its main solver is the **Pauli-cone method**: each observable is propagated back
   - mid-circuit measurement, resets or classical control;
   - initial states other than |0...0>;
   - deep noiseless circuits beyond 28 qubits where `plan` shows wide cones and exact answers are required. A tensor-network simulator may handle those;
-  - error-correction decoding and annealing schedules, which are not built in yet.
+  - error-correction decoding, which is not built in yet.
 
 ## Five commands
 
@@ -99,6 +99,13 @@ More options:
 In a sweep, `--device fit:heavy-hex-127` grows the chip to fit each size.
 
 The result is an ordinary device file: use it anywhere a device goes (`--device modular.json`). `compare` ranks chips by mean deviation from the ideal value on a benchmark family, with mean SWAPs, two-qubit gates and duration. In Python, `quantum_circuit_simulator.design` has the same operations.
+
+## Real chips, benchmark circuits, CAD and annealing
+
+- **Real chips:** `quantum-circuit-simulator devices` lists generated layouts (`kind: layout`) and real chips (`kind: real`): 65 IBM chips such as `ibm_fez`, `ibm_torino`, `ibm_sherbrooke` and `ibm_kyiv`, and Google's `google_willow_pink`, `google_weber` and `google_rainbow`. Each carries its measured per-qubit and per-coupler errors, T1, T2, readout, gate times and coordinates from a dated calibration snapshot. Use them anywhere a device goes: `--device ibm_fez --compile`. Say "the ibm_fez calibration of <snapshot date>", not "ibm_fez today".
+- **Benchmark circuits:** `quantum-circuit-simulator circuits` lists families and the MQT Bench and Supermarq library; `circuits mqt/qft --size 16 --out qft.qasm` writes one. Sweeps accept library names (`--family mqt/grover --sizes 4,8`), with mean Z as the default observable. `kicked-ising` is IBM's 127-qubit utility experiment.
+- **CAD:** `quantum-circuit-simulator cad ibm_fez --out fez.gds` (or `.dxf`, `.svg`) draws any chip. It is a placement layout, not a fabrication mask.
+- **Annealing:** `quantum-circuit-simulator anneal --model maxcut --lattice regular --size 60,3 --device dwave-advantage` embeds and samples an Ising problem; `--problem p.json` takes any Ising or QUBO. Report `best_energy`, `ground_energy` when present, and `chain_break_fraction`. The samplers model annealing (path-integral Monte Carlo by default); they are not the D-Wave device. Needs the `dwave` extra.
 
 ## Hamiltonians and algorithms
 

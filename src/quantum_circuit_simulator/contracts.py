@@ -35,6 +35,10 @@ OUTPUTS = {
     "optimize": "value, parameters, reference optimum, converged, and the trace of every iteration",
     "zne": "estimate, fit, fit_uncertainty, points per noise scale, unmitigated and ideal values",
     "shot-noise": "value, standard_error, shots per commuting group and their variances",
+    "anneal": "best energy and sample, energy statistics, ground energy and its probability when small, "
+              "embedding (qubits used, chain lengths) and chain-break fraction on a chip",
+    "circuits": "circuit families and the benchmark library (name, suite, qubits, gates, source), or one circuit's OpenQASM",
+    "cad": "path, format, qubits, couplers and size in micrometres of the written layout",
 }
 
 

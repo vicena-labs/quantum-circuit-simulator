@@ -268,6 +268,13 @@ def sweep(circuit, observable=None, *, devices=None, noise_scales=(1.0,), sizes=
 
 
 def _instance(circuit, observable, n, circuits, parameters):
+    if isinstance(circuit, str) and circuit in circuits.library_names():
+        # A library benchmark: the bundled size with at least n qubits; observable mean Z by default.
+        from .interop import _parse_qasm2
+        source = circuits.load(circuit, n)
+        width = _parse_qasm2(source)[0]
+        default = " + ".join(f"{1 / width:.12g}*Z{q}" for q in range(width))
+        return source, observable(n) if callable(observable) else (observable or default)
     if isinstance(circuit, str) and circuit in circuits.FAMILIES:
         if n is None:
             raise ValueError("a circuit family needs sizes")

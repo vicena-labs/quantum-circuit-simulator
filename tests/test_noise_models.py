@@ -20,7 +20,8 @@ def quiet(n, **changes):
 
 
 def value(qasm, chip, observable, **kw):
-    return compile_circuit(qasm, chip, layout="trivial", **kw).expectation(observable).value
+    # The exact formulas below use the depolarizing gate model; the thermal model has its own test.
+    return compile_circuit(qasm, chip, layout="trivial", gate_model="depolarizing", **kw).expectation(observable).value
 
 
 def test_per_qubit_readout_error_and_one_qubit_error():
