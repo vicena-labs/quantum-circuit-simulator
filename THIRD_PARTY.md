@@ -21,6 +21,8 @@ Each device and circuit records its source and version in its own `source` field
 
 The optional D-Wave extra installs dimod, dwave-networkx, dwave-samplers, dwave-system and minorminer (Apache-2.0) separately; the annealing module calls them and copies none of their code. The `dwave-advantage` and `dwave-advantage2` devices are built from dwave-networkx graphs with D-Wave's published h, J and annealing-time ranges.
 
+The optional chemistry extra installs PySCF (Apache-2.0) separately; the chemistry module calls it for integrals and reference energies and copies none of its code. Microsoft's Majorana 2 and tetron devices are built from numbers published in Microsoft's papers (arXiv:2606.03884, arXiv:2507.08795, arXiv:2502.12252), each cited in the device's `parameters["sources"]`; no figure, layout or data file from those papers is included, and the tetron CAD drawings are the package's own from the published dimensions.
+
 No copied Qiskit, Aer, Stim, Qulacs or Ocean source, old CI artifacts, private application source, credentials, infrastructure settings or private Git history are intentionally included. KQCircuits (GPL-3.0) is not used, so its chip designs are not included.
 
 The optional comparison tools install pauli-prop, Qulacs, Qiskit and Qiskit Aer separately. They are not runtime dependencies or vendored implementations. The recorded versions are pauli-prop 0.2.1 (Apache-2.0), Qulacs 0.6.14 (MIT), Qiskit 2.6.2 (Apache-2.0) and Aer 0.18.4 (Apache-2.0); consult each installed distribution's own notices. The adapters are original API integration code.

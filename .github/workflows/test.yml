@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install build pytest numpy scipy stim gdstk dimod dwave-networkx dwave-samplers dwave-system minorminer
+      - run: python -m pip install build pytest numpy scipy stim gdstk dimod dwave-networkx dwave-samplers dwave-system minorminer pyscf
       - run: python tools/check_source_hygiene.py --tracked-only
       - run: python -m build
       - run: python -m pip install dist/*.whl

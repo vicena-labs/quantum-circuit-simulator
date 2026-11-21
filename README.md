@@ -33,7 +33,7 @@
 
 Or type your own question at [vicena.ai](https://vicena.ai).
 
-**Release candidate 0.5.0rc2, by Mehdi Farza at Vicena Labs, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](#citing-and-attribution) and the [related work](docs/related-work.md) it builds on.
+**Release candidate 0.5.0rc3, by Mehdi Farza at Vicena Labs, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](#citing-and-attribution) and the [related work](docs/related-work.md) it builds on.
 
 ## What it does
 
@@ -107,6 +107,37 @@ quantum-circuit-simulator shot-noise circuit.qasm --observable h.json --shots 10
 ```
 
 With more than 16 parameters, gradients come from the graph backend's single reverse pass (the native solver computes them 16 per pass). On a 12-qubit, 120-parameter ansatz with a Heisenberg Hamiltonian the graph returns the value and all 120 derivatives in 5 ms, against 0.85 s for the native passes (an Apple M-series laptop, one thread).
+
+## Research workflows: chemistry, mitigation, measurement, dynamics and fault tolerance
+
+These modules follow what quantum simulation and algorithm papers do today; [research practice](docs/research-practice.md) lists the publications behind each and what is still missing. Every one is checked against an exact reference in the tests.
+
+- **Chemistry** (`chemistry`, `pip install "quantum-circuit-simulator[chemistry]"` for PySCF): molecules by name or geometry, active spaces, Jordan–Wigner, Bravyi–Kitaev and parity mappings, Z2 tapering, Hartree–Fock states and UCCSD ansätze. H2 matches PySCF's FCI energy to 1e-8 in every mapping; tapering takes it from 4 qubits to 1.
+- **Error mitigation** (`mitigation`): propagated noise absorption (`pna`, the noise inverted into the observable by Pauli propagation), probabilistic error cancellation with its sampling overhead (`pec`, `pec_overhead`), and readout correction (`readout_correct`, `mitigated_counts`, TREX).
+- **Measurement planning** (`measurement`): grouping by qubit-wise or full commutation with the Clifford that diagonalises each group, exact shot budgets with optimal allocation, and classical shadows.
+- **Hamiltonian dynamics** (`dynamics`): Suzuki formulas of any even order, qDRIFT, commutator bounds on the Trotter error, and multi-product formulas.
+- **Fault-tolerant resources** (`resources`): T counts with rotation synthesis, surface-code distance, factories, physical qubits and runtime, from a transparent model that states its assumptions; tetron chips supply their own error rates.
+- **QAOA practice** (`baselines`): fixed-angle and transferred initial angles, and classical baselines (brute force, simulated annealing, Goemans–Williamson with cvxpy).
+
+```python
+from quantum_circuit_simulator import (algorithms as al, baselines, chemistry, devices, dynamics,
+                                       hamiltonians as hm, measurement, mitigation, resources)
+from quantum_circuit_simulator.compiler import compile_circuit
+
+lih = chemistry.molecule("LiH", active=(2, 3), mapping="parity", taper=True)    # 3 qubits
+print(lih.exact_energy(), lih.energies["casci"])                                # -7.8630808, from PySCF
+print(measurement.shot_budget(lih.hf_program(), lih.hamiltonian, precision=1.6e-3)["optimal_shots"])
+
+bell = compile_circuit(open("bell.qasm").read(), devices.get("ibm_fez"), layout="trivial")
+print(mitigation.pna(bell, "Z0*Z1"))                       # 0.94 noisy, 1.0 with the noise model inverted
+
+tfim = hm.transverse_field_ising(hm.chain(8), h=1.0)
+print(dynamics.trotter_error_bound(tfim, 1.0, steps=10, order=2))
+print(resources.estimate(dynamics.suzuki(tfim, 1.0, steps=10, order=4), physical_error=1e-3))
+
+cut = hm.maxcut(hm.random_regular(12, 3, seed=1))
+print(al.qaoa(cut, depth=2, init="fixed-angle").value, baselines.brute_force(cut)["value"])
+```
 
 ## States and sampling
 
@@ -329,7 +360,7 @@ If you use Quantum Circuit Simulator in a publication, a thesis, a report or a p
 @software{quantum_circuit_simulator,
   author       = {Farza, Mehdi and {Vicena Labs}},
   title        = {Quantum Circuit Simulator: noisy circuits, algorithms and chip design with the Pauli-cone method},
-  version      = {0.5.0rc2},
+  version      = {0.5.0rc3},
   year         = {2026},
   publisher    = {Vicena Labs},
   url          = {https://github.com/vicena-labs/quantum-circuit-simulator},

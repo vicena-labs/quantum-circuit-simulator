@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantum-circuit-simulator"
-version = "0.5.0rc2"
+version = "0.5.0rc3"
 description = "Quantum circuit simulator by Vicena: noisy circuits on realistic chips, algorithm development with exact gradients, and chip design, for AI agents"
 readme = "README.md"
 authors = [{ name = "Mehdi Farza" }]
@@ -32,8 +32,9 @@ qiskit = ["qiskit>=1.3"]
 dwave = ["dwave-networkx>=0.8", "dimod>=0.12", "dwave-samplers>=1.4", "dwave-system>=1.24", "minorminer>=0.2"]
 stim = ["stim>=1.14"]
 algorithms = ["scipy>=1.11"]
+chemistry = ["pyscf>=2.6", "scipy>=1.11"]
 all = ["qiskit>=1.3", "dwave-networkx>=0.8", "dimod>=0.12", "dwave-samplers>=1.4", "dwave-system>=1.24",
-       "minorminer>=0.2", "stim>=1.14", "scipy>=1.11"]
+       "minorminer>=0.2", "stim>=1.14", "scipy>=1.11", "pyscf>=2.6"]
 
 [project.scripts]
 quantum-circuit-simulator = "quantum_circuit_simulator.cli:main"

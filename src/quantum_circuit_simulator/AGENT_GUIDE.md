@@ -198,6 +198,15 @@ for values in sweep:
     print(plan.evaluate(c.shifts(values)).value)
 ```
 
+Research workflows, in Python (see the README's research-workflows section for examples):
+
+- `chemistry.molecule("H2O", active=(4, 4), mapping="parity", taper=True)` gives a Hamiltonian with `energies` from PySCF (needs the `chemistry` extra), `hf_program()`, `exact_energy()` and `uccsd(...)`. Report the basis, active space and mapping.
+- `mitigation.pna(compiled, obs)`, `pec(...)`, `pec_overhead(...)`, `readout_correct(...)`: say which noise model was inverted. A mitigated value is only as good as that model.
+- `measurement.shot_budget(circuit, h, precision)`, `group(h, method="commuting")`, `shadows(...)`.
+- `dynamics.suzuki(h, t, steps, order=4)`, `qdrift`, `trotter_error_bound`, `mpf`.
+- `resources.estimate(circuit, physical_error=1e-3)` (the result lists its assumptions; quote them).
+- `baselines.brute_force(cost)`, `simulated_annealing`, and `algorithms.qaoa(cost, depth, init="fixed-angle")`: report QAOA against a classical baseline.
+
 ## Verify before reporting
 
 - **Cross-check small cases:** on a reduced instance (at most about 20 qubits), `solve(circuit, terms, cross_check=True)` compares Pauli propagation with state simulation and reports `cross_check.agrees`; or compare against `--backend python` or `dense`.
