@@ -277,8 +277,12 @@ def vqe(hamiltonian, ansatz=None, *, device=None, noise_scale=1.0, method="adam"
 
 
 def qaoa(cost, depth=1, *, device=None, noise_scale=1.0, method="adam", steps=150, learning_rate=0.05,
-         x0=None, seed=0, shots=1024, mixer="x", **options):
+         x0=None, seed=0, shots=1024, mixer="x", init=None, **options):
     """Optimise depth-p QAOA angles for a diagonal cost Hamiltonian, then sample bitstrings.
+
+    init sets the starting angles instead of x0: "fixed-angle" for regular
+    Max-Cut, or a previous result or angle sequence to transfer (see
+    `baselines.initial_angles`).
 
     Returns the optimised energy, the best sampled bitstring and its cost, and
     for up to 24 qubits the exact minimum cost and the approximation ratio
@@ -290,6 +294,9 @@ def qaoa(cost, depth=1, *, device=None, noise_scale=1.0, method="adam", steps=15
         raise ConversionError("QAOA needs a diagonal (Z-only) cost Hamiltonian")
     program = qaoa_program(h, depth, mixer)
     objective = Objective(program, h, device=device, noise_scale=noise_scale)
+    if init is not None:
+        from .baselines import initial_angles
+        x0 = initial_angles(h, depth, init)
     start = np.tile([0.1, 0.1], depth) if x0 is None else np.asarray(x0, float)
     result = minimize(objective, start, method=method, steps=steps, learning_rate=learning_rate, seed=seed, **options)
     extra = {"hamiltonian": h.summary(), "parameters": program.parameters, "compiled": objective.report}
