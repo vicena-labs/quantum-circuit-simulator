@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantum-circuit-simulator"
-version = "0.5.0rc4"
+version = "0.5.0rc5"
 description = "Quantum circuit simulator by Vicena: noisy circuits on realistic chips, algorithm development with exact gradients, and chip design, for AI agents"
 readme = "README.md"
 authors = [{ name = "Mehdi Farza" }]

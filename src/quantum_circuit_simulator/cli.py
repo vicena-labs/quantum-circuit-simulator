@@ -199,8 +199,8 @@ def main(argv=None):
         if getattr(args, 'min_coefficient', None) is not None or getattr(args, 'max_weight', None) is not None:
             options['truncation'] = {'min_coefficient': args.min_coefficient or 0., 'max_weight': args.max_weight}
         if getattr(args, 'converge', None) is not None:
-            if not args.min_coefficient or not 0 < args.converge < 1 or not 2 <= args.levels <= 12:
-                raise _UsageError('--converge needs --min-coefficient, a tolerance in (0, 1) and 2 to 12 --levels',
+            if not args.min_coefficient or not 0 < args.converge < 1 or not 3 <= args.levels <= 12:
+                raise _UsageError('--converge needs --min-coefficient, a tolerance in (0, 1) and 3 to 12 --levels',
                                   'For example: --min-coefficient 1e-4 --converge 0.01')
             # Leave the worker time to report the finest finished level before the deadline.
             options['converge'] = {'tolerance': args.converge, 'levels': args.levels,

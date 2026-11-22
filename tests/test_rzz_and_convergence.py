@@ -74,12 +74,14 @@ def test_deep_truncation_flags_an_uninformative_bound():
     assert small.bound_informative is True
 
 
-def test_refine_tightens_until_two_levels_agree():
+def test_refine_tightens_until_three_levels_agree():
     qasm, _ = kicked_ising(127, steps=4, theta_h=0.5)
     circuit = from_qasm(qasm).circuit
     results, report = refine(circuit, [(1.0, {62: "Z"})], [None], ladder(1e-2, 6), tolerance=1e-3)
-    assert report["converged"] and report["stopped"] == "converged"
-    assert report["change"] <= 1e-3 and len(report["levels"]) >= 2
+    assert report["converged"] and report["stopped"].startswith("stable over three levels")
+    assert report["change"] <= 1e-3 and len(report["levels"]) >= 3
+    values = [level["values"][0] for level in report["levels"]]
+    assert max(abs(values[-1] - values[-2]), abs(values[-2] - values[-3])) == report["change"]
     thresholds = [level["min_coefficient"] for level in report["levels"]]
     assert thresholds == sorted(thresholds, reverse=True)
     assert results[0].value == report["levels"][-1]["values"][0]
@@ -102,6 +104,6 @@ def test_cli_converge_reports_every_level(tmp_path):
                          capture_output=True, text=True, encoding="utf-8", env=dict(os.environ), check=True)
     data = json.loads(out.stdout)
     convergence = data["convergence"]
-    assert convergence["converged"] and len(convergence["levels"]) >= 2
+    assert convergence["converged"] and len(convergence["levels"]) >= 3
     assert data["results"][0]["value"] == convergence["levels"][-1]["values"][0]
     assert "bound_informative" in data["results"][0]

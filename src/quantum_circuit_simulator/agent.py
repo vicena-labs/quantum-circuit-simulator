@@ -80,7 +80,8 @@ def capabilities():
                                         "bounds on |exact - returned|, often loose; bound_informative is false "
                                         "when the bound is no tighter than the trivial one",
                        "convergence": "--converge TOL tightens F half a decade at a time (up to --levels) "
-                                      "until successive values agree within TOL, and reports every level"},
+                                      "until three successive values agree within TOL, and reports every level; "
+                                      "agreement is empirical evidence, not an error bound"},
         "not_supported": ["mid-circuit measurement", "reset", "classical control",
                           "non-Pauli observables", "initial states other than |0...0>"],
         "exit_codes": EXIT_CODES,
@@ -195,8 +196,9 @@ def plan(circuit, observables):
     else:
         recommendations.append("Exact evaluation may exceed the term cap (the bound is a worst case; it often "
                                "succeeds). Try `quantum-circuit-simulator run <input>`; if it fails with ConeOverflow, use "
-                               "`--min-coefficient 1e-4`, then `1e-5`, and accept the value once it stops "
-                               "changing.")
+                               "`--min-coefficient 1e-4 --converge 0.01 --timeout 600`, which tightens the "
+                               "truncation level by level. Three agreeing levels are evidence, not a bound: confirm a "
+                               "headline value independently when bound_informative is false.")
     if widest <= 6:
         recommendations.append("Every cone has at most 6 wires: `--backend dense` is exact regardless of depth.")
     if circuit.n_parameters:
@@ -227,8 +229,8 @@ def hint_for(exc):
         return "Exact propagation exceeded the term cap. Raise --max-terms (up to 1000000000, about 0.5 KB " \
                "of memory per term), or approximate with --min-coefficient 1e-4 --converge 0.01 --timeout 600, which " \
                "tightens the truncation half a decade at a time and reports every level, its rigorous " \
-               "error_bound and the change between levels. When bound_informative is false, the change between " \
-               "levels is the only evidence for the value. --backend auto falls back to dense for cones of at " \
+               "error_bound and the change between levels. When bound_informative is false, agreement between " \
+               "levels is empirical evidence only: confirm a headline value by an independent method. --backend auto falls back to dense for cones of at " \
                "most 6 wires."
     if "truncation" in text:
         return "Truncation works with --backend native, graph or auto."

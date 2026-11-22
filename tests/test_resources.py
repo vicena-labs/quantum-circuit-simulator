@@ -98,3 +98,13 @@ def test_tetron_device_sets_error_and_cycle_time():
         resources.estimate(QASM, device=devices.get("microsoft_majorana_2"))   # 16% X-measurement error
     with pytest.raises(ValueError, match="topological"):
         resources.estimate(QASM, device=devices.get("heavy-hex-127"))
+
+
+def test_estimate_accepts_minimal_counts_and_explains_missing_ones():
+    from quantum_circuit_simulator import resources
+    minimal = resources.estimate({"logical_qubits": 80, "t_count": 32_772_000}, physical_error=1e-3, budget=0.01,
+                                 cycle_time_s=1.1e-6)
+    # The same workload through Microsoft's resource estimator gives distance 21 and 12.6 minutes.
+    assert minimal["code_distance"] == 21 and minimal["runtime_s"] / 60 == pytest.approx(12.6, rel=0.01)
+    with pytest.raises(ValueError, match="logical_qubits and t_gates"):
+        resources.estimate({"qubits": 80, "t_count": 10})

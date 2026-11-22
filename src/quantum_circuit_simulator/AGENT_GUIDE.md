@@ -70,7 +70,7 @@ Built-in families, each with its own observable:
 - `qaoa-ring` (MaxCut);
 - `ising-trotter`.
 
-The solver is chosen per point: exact sparse propagation, then the state vector (noise-free, up to 24 qubits) or density matrix (noisy, up to 10 qubits), then exact dense for cones of at most 6 wires, then truncation at 1e-4 and 1e-5. A truncated row has `exact: false`, an `error_bound` with `bound_informative`, and the `convergence_change` between the two tolerances. A chip too small for a size gives a row with `error` instead of stopping the sweep. In Python: `from quantum_circuit_simulator.experiments import sweep, solve`.
+The solver is chosen per point: exact sparse propagation, then the state vector (noise-free, up to 24 qubits) or density matrix (noisy, up to 10 qubits), then exact dense for cones of at most 6 wires, then truncation at 1e-4, 3.2e-5 and 1e-5. A truncated row has `exact: false`, an `error_bound` with `bound_informative`, and the `convergence_change`, the larger of the two successive changes. A chip too small for a size gives a row with `error` instead of stopping the sweep. In Python: `from quantum_circuit_simulator.experiments import sweep, solve`.
 
 Topological chips: `devices.get("microsoft_majorana_2")` (four tetrons, Microsoft's published parity lifetimes and readout, with the values Microsoft has not published taken from the Majorana 1-generation tetron or labelled assumptions in `parameters["sources"]`) and `devices.get("tetron-array", rows=..., columns=...)` (what-if targets). The compiler charges Clifford gates their parity measurements, T gates a magic state and other angles about 3 log2(1/precision) T gates (`noise_budget.totals.magic_states`), and applies parity flips instead of T1/T2. Say which values are published and which assumed whenever you report a tetron result.
 
@@ -143,7 +143,7 @@ Every result has `schema` (`quantum-circuit-simulator-<kind>/1`) and `provenance
 
 1. **Plan.** `quantum-circuit-simulator plan`: if `exact_guaranteed` is true, exact evaluation cannot exceed the term cap.
 2. **Run exactly.** `quantum-circuit-simulator run`. A `ConeOverflow` error means the exact expansion exceeded the cap (default 1,000,000 terms per cone; `--max-terms` raises it, at about 0.5 KB of memory per term). It never returns a wrong answer.
-3. **Truncate if needed.** Rerun with `--min-coefficient 1e-4 --converge 0.01 --timeout 900`. The threshold tightens half a decade per level until two successive values agree within 0.01, the term cap stops it or the time runs out, and `convergence` reports every level. Each result's `error_bound` is a rigorous worst case on |exact − returned|. For deep circuits it is often no tighter than the trivial bound, and `bound_informative` is then false: the change between levels is the only evidence, and it is empirical, not a guarantee. Never stop at the first overflow: raise `--max-terms`, tighten the threshold, and report what converged.
+3. **Truncate if needed.** Rerun with `--min-coefficient 1e-4 --converge 0.01 --timeout 900`. The threshold tightens half a decade per level until three successive values agree within 0.01, the term cap stops it or the time runs out, and `convergence` reports every level. Each result's `error_bound` is a rigorous worst case on |exact − returned|. For deep circuits it is often no tighter than the trivial bound, and `bound_informative` is then false: agreement between levels is then the only evidence, and it is empirical, not a guarantee. Coefficient truncation can plateau and then move: on the 127-qubit kicked Ising circuit at 20 steps and θ = 0.4, three levels agreed within 0.0014 at 0.836, while the converged literature value is 0.850. For a headline value with an uninformative bound, confirm it independently: a published reference, a tensor-network or state-vector check on a reduced case, or a further level. Never stop at the first overflow: raise `--max-terms`, tighten the threshold, and report what converged.
 4. **Sweep parameters.** For many parameter vectors of one circuit, use `--backend graph`. It compiles once and is much faster per vector; put up to 128 vectors in one JSON request's `parameter_vectors`.
 5. **Small cones.** When every cone has at most 6 wires, `--backend dense` is exact regardless of depth.
 
@@ -152,7 +152,7 @@ Every result has `schema` (`quantum-circuit-simulator-<kind>/1`) and `provenance
 - `results[i].value`: the expectation of the whole weighted observable at parameter vector i.
 - `results[i].gradient`: d value / d parameter, one entry per shared parameter.
 - `results[i].error_bound` and `gradient_error_bound`: present only for truncated runs; `bound_informative` is false when the bound says nothing beyond |exact| ≤ ‖O‖₁.
-- `convergence` (with `--converge`): each level's threshold, values, bounds, peak terms and seconds; `change` between the last two; `converged`; and why it `stopped`.
+- `convergence` (with `--converge`): each level's threshold, values, bounds, peak terms and seconds; `change`, the larger of the last two successive changes; `converged`, true when it is within the tolerance (stable, not proven); and why it `stopped`.
 - `backend`: the method actually used. `diagnostics.fallback_reason` explains any fallback.
 - `diagnostics`: cone sizes and term counts. `numerics`: the cutoffs in force.
 

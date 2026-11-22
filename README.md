@@ -33,7 +33,7 @@
 
 Or type your own question at [vicena.ai](https://vicena.ai).
 
-**Release candidate 0.5.0rc4, by Mehdi Farza at Vicena Labs, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](#citing-and-attribution) and the [related work](docs/related-work.md) it builds on.
+**Release candidate 0.5.0rc5, by Mehdi Farza at Vicena Labs, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](#citing-and-attribution) and the [related work](docs/related-work.md) it builds on.
 
 ## What it does
 
@@ -283,7 +283,7 @@ result = approx.evaluate([0.1])
 print(result.value, result.error_bound, result.gradient_error_bound)
 ```
 
-`min_coefficient` discards a term once its coefficient falls below that fraction of the observable's l1 norm; gradient evaluations keep a term while any derivative coefficient is above it. `max_weight` discards terms acting on more than that many wires still open, after early contraction into the input state. `error_bound` is rigorous: a term `c*P` discarded at any point would have contributed `c*Tr(rho P)`, and `|Tr(rho P)| <= 1`. It is a worst case and is often much larger than the actual error, so check convergence by tightening the tolerance until the value stops changing. Truncation runs on `native`, `graph` and `auto`; the other backends refuse it. The native solver chooses the discarded terms afresh at every evaluation. A truncated `graph` chooses them when it compiles, at the angles bound then, and keeps evaluating that smaller graph; its bound is still computed at each evaluation's own angles, so it stays rigorous and grows when the parameters move to where the discarded terms matter. When the bound exceeds `reprepare_factor` (default 2) times its value at compilation, the graph compiles itself again at the current angles; `reprepare_factor=None` keeps the first graph.
+`min_coefficient` discards a term once its coefficient falls below that fraction of the observable's l1 norm; gradient evaluations keep a term while any derivative coefficient is above it. `max_weight` discards terms acting on more than that many wires still open, after early contraction into the input state. `error_bound` is rigorous: a term `c*P` discarded at any point would have contributed `c*Tr(rho P)`, and `|Tr(rho P)| <= 1`. It is a worst case and is often much larger than the actual error, so check convergence by tightening the threshold over several levels (`--converge` needs three that agree). Agreement is empirical: coefficient truncation can plateau and then move, so confirm a headline value independently when the bound is uninformative. Truncation runs on `native`, `graph` and `auto`; the other backends refuse it. The native solver chooses the discarded terms afresh at every evaluation. A truncated `graph` chooses them when it compiles, at the angles bound then, and keeps evaluating that smaller graph; its bound is still computed at each evaluation's own angles, so it stays rigorous and grows when the parameters move to where the discarded terms matter. When the bound exceeds `reprepare_factor` (default 2) times its value at compilation, the graph compiles itself again at the current angles; `reprepare_factor=None` keeps the first graph.
 
 `threads=N` in `prepare` evaluates independent cone groups in parallel. Results do not depend on the thread count.
 
@@ -360,7 +360,7 @@ If you use Quantum Circuit Simulator in a publication, a thesis, a report or a p
 @software{quantum_circuit_simulator,
   author       = {Farza, Mehdi and {Vicena Labs}},
   title        = {Quantum Circuit Simulator: noisy circuits, algorithms and chip design with the Pauli-cone method},
-  version      = {0.5.0rc4},
+  version      = {0.5.0rc5},
   year         = {2026},
   publisher    = {Vicena Labs},
   url          = {https://github.com/vicena-labs/quantum-circuit-simulator},

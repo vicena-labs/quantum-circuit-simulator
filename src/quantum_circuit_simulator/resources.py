@@ -117,9 +117,9 @@ def estimate(circuit_or_counts, *, physical_error=None, budget=1e-3, code="surfa
              factory="15-to-1", device=None, prefactor=0.03, threshold=0.01, values=None):
     """Physical resources to run a circuit fault-tolerantly on a surface code, as a dict.
 
-    circuit_or_counts is anything `logical_counts` accepts or a dict with at least
-    logical_qubits, t_gates, rotations and measurements (the T count is
-    recomputed for this budget).
+    circuit_or_counts is anything `logical_counts` accepts or a dict with
+    logical_qubits and t_gates (or t_count); rotations and measurements
+    default to 0, and the T count is recomputed for this budget.
     physical_error (default 1e-3) is the error per physical operation and
     cycle_time_s (default 1 us) one syndrome round. With a topological tetron
     `device` (devices.get("tetron-array"), "microsoft_majorana_2"), physical
@@ -135,8 +135,8 @@ def estimate(circuit_or_counts, *, physical_error=None, budget=1e-3, code="surfa
     if physical_error >= threshold:
         raise ValueError(f"physical error {physical_error:g} is not below the threshold {threshold:g}; "
                          "no code distance meets any budget")
-    counts = circuit_or_counts if isinstance(circuit_or_counts, dict) else logical_counts(circuit_or_counts,
-                                                                                            values=values)
+    counts = _given(circuit_or_counts) if isinstance(circuit_or_counts, dict) else \
+        logical_counts(circuit_or_counts, values=values)
     counts = {**counts, **_synthesis(counts, budget)}
     shares = _split(budget, counts)
     q = counts["logical_qubits"]
@@ -166,7 +166,9 @@ def estimate(circuit_or_counts, *, physical_error=None, budget=1e-3, code="surfa
         "Cliffords absorbed into Pauli-based computation; one logical cycle (d rounds) per T state and measurement",
         f"error budget {budget:g} split {shares}",
         "15-to-1 blocks of 11 patches for 11 logical cycles, output error 35 e_in^3 + 121 p_L(d), "
-        "injected states at the physical error, factory patches at the algorithm distance",
+        "injected states at the physical error, factory patches at the algorithm distance (conservative: "
+        "factories with smaller distances in early levels need fewer qubits; on a 33-million-T workload at "
+        "p = 1e-3, Microsoft's resource estimator gives about a third of these factory qubits)",
         "2 d^2 physical qubits per patch",
     ]
     return {"logical_qubits": patches, "algorithm_qubits": q, "code_distance": d,
@@ -177,6 +179,18 @@ def estimate(circuit_or_counts, *, physical_error=None, budget=1e-3, code="surfa
             "factory_levels": levels, "factory_output_error": output_error, "counts": counts,
             "physical_error": physical_error, "cycle_time_s": cycle_time_s, "error_budget": shares,
             "assumptions": assumptions, "citations": CITATIONS}
+
+
+def _given(counts):
+    """A counts dict with its defaults: logical_qubits and a T count are required, rotations and
+    measurements default to 0, and t_count (T gates already including synthesized rotations) is
+    accepted for t_gates."""
+    if "logical_qubits" not in counts or not ({"t_gates", "t_count"} & set(counts)):
+        raise ValueError("counts need logical_qubits and t_gates (or t_count); rotations and measurements "
+                         f"default to 0. Got: {sorted(counts)}")
+    t_gates = counts.get("t_gates", counts.get("t_count"))
+    return {**counts, "t_gates": t_gates, "rotations": counts.get("rotations", 0),
+            "measurements": counts.get("measurements", 0)}
 
 
 def _hardware(device, physical_error, cycle_time_s, assumptions):

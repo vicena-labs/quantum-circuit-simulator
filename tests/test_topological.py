@@ -69,3 +69,17 @@ def test_tetron_cad_uses_published_dimensions(tmp_path):
     for ext in ("gds", "svg", "dxf", "stl"):
         cad.write(chip, tmp_path / f"majorana.{ext}")
         assert (tmp_path / f"majorana.{ext}").stat().st_size > 0
+
+
+def test_noise_budget_names_the_dominant_synthesis_cost():
+    """A synthesized rotation's error splits into its T gates' parity measurements and magic states,
+    so a sweep can see which one to vary."""
+    qasm = HEADER + "qreg q[1];\nrx(0.3) q[0];\n"
+    published = compile_circuit(qasm, devices.get("microsoft_majorana_2"), layout="trivial")
+    totals = published.report["noise_budget"]["totals"]
+    assert totals["magic_states"] == 30
+    assert totals["synthesis_measurements"] == pytest.approx(30 * (1 - (1 - 0.005) * (1 - 0.16)))
+    assert totals["magic_state"] == pytest.approx(30 * 0.16)
+    better = compile_circuit(qasm, devices.get("microsoft_majorana_2", magic_state_error=1e-6), layout="trivial")
+    better_totals = better.report["noise_budget"]["totals"]
+    assert better_totals["synthesis_measurements"] > 100 * better_totals["magic_state"]

@@ -8,8 +8,9 @@
 
 solve() tries the fastest exact method first and degrades visibly: exact
 sparse propagation; then exact local density matrices when every cone has at
-most 6 wires; then truncation at 1e-4 and 1e-5, reporting the change between
-the two as the convergence check alongside the rigorous bound. Every result
+most 6 wires; then truncation at 1e-4, 3.2e-5 and 1e-5, reporting the larger
+of the two successive changes as the convergence check alongside the rigorous
+bound. Every result
 says which method produced it and whether it is exact.
 
 sweep() compiles the circuit onto each chip at each noise scale (and each size,
@@ -27,7 +28,7 @@ from dataclasses import dataclass, field
 from .api import ConeOverflow, Truncation
 
 
-def solve(circuit, terms, shifts=None, *, gradients=False, cross_check=False, tolerances=(1e-4, 1e-5),
+def solve(circuit, terms, shifts=None, *, gradients=False, cross_check=False, tolerances=(1e-4, 10 ** -4.5, 1e-5),
           exact_budget=250_000):
     """Evaluate observable terms on a `Circuit` with the best available method.
 
@@ -38,8 +39,8 @@ def solve(circuit, terms, shifts=None, *, gradients=False, cross_check=False, to
     parameters and gradients are wanted); the state vector (noise-free, up to
     24 qubits) or density matrix (noisy, up to 10 qubits); exact local density
     matrices when every cone has at most 6 wires; then truncation at each
-    tolerance, reporting the rigorous error bound and the change between the
-    last two tolerances as the convergence check. The exact attempt stops at
+    tolerance, reporting the rigorous error bound and the larger of the last
+    two successive changes as the convergence check (empirical, not a bound). The exact attempt stops at
     `exact_budget` terms (or the circuit's own cap, if lower).
 
     cross_check=True evaluates the value a second, independent way where one
@@ -114,22 +115,28 @@ def _truncated(circuit, terms, shifts, gradients, tolerances, reasons):
         out["gradient_error_bound"] = list(result.gradient_error_bound)
     out["convergence_change"] = report["change"]
     if report["change"] is None:
-        reasons.append(f"only one tolerance fitted: {report['stopped']}; convergence is unchecked")
+        reasons.append(f"fewer than three tolerances fitted: {report['stopped']}; convergence is unchecked")
     return out
 
 
 def refine(circuit, terms, vectors, thresholds, *, tolerance=None, seconds=None, gradients=False, threads=1):
     """Evaluate at each truncation threshold in turn, tightest last.
 
-    Stops early when the last two levels agree within `tolerance` (for every
-    parameter vector), when the next level would not finish within `seconds`
-    (predicted from how the previous levels grew), or when a level exceeds the
-    term cap; the finest completed level is kept. Returns that level's
-    evaluations (None if no level completed) and a report: each level's
-    threshold, values, bounds, peak terms and seconds; the change between the
-    last two levels; whether it is within tolerance; and why it stopped. When
-    the rigorous bounds are uninformative, the change is the evidence for the
-    value, and it is empirical, not a guarantee.
+    Stops early when the last three levels agree within `tolerance` (both
+    successive changes, for every parameter vector), when the next level would
+    not finish within `seconds` (predicted from how the previous levels grew),
+    or when a level exceeds the term cap; the finest completed level is kept.
+    Returns that level's evaluations (None if no level completed) and a report:
+    each level's threshold, values, bounds, peak terms and seconds; `change`,
+    the larger of the last two successive changes; `converged`, whether it is
+    within tolerance; and why it stopped.
+
+    Agreement is empirical evidence, not a bound: coefficient truncation can
+    plateau for several levels and then move. On the 127-qubit kicked Ising
+    circuit at 20 steps and theta 0.4, three levels agreed within 0.0014 at
+    0.836 while the converged literature value is 0.850. When
+    `bound_informative` is false, confirm a headline value by an independent
+    method or reference.
     """
     levels, best, stopped, started = [], None, "all thresholds evaluated", time.perf_counter()
     for threshold in thresholds:
@@ -153,7 +160,7 @@ def refine(circuit, terms, vectors, thresholds, *, tolerance=None, seconds=None,
                        "peak_terms": plan.diagnostics.get("max_single_cone_terms"),
                        "seconds": time.perf_counter() - t})
         if tolerance is not None and _change(levels) is not None and _change(levels) <= tolerance:
-            stopped = "converged"
+            stopped = "stable over three levels (empirical, not a bound)"
             break
     change = _change(levels)
     return best, {"levels": levels, "tolerance": tolerance, "change": change,
@@ -162,9 +169,11 @@ def refine(circuit, terms, vectors, thresholds, *, tolerance=None, seconds=None,
 
 
 def _change(levels):
-    if len(levels) < 2:
+    """The larger of the last two successive changes, or None before three levels."""
+    if len(levels) < 3:
         return None
-    return max(abs(a - b) for a, b in zip(levels[-1]["values"], levels[-2]["values"]))
+    return max(abs(a - b) for x, y in ((levels[-1], levels[-2]), (levels[-2], levels[-3]))
+               for a, b in zip(x["values"], y["values"]))
 
 
 def ladder(start, levels=5):

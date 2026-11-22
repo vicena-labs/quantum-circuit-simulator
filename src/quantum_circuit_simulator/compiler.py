@@ -436,6 +436,8 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
     # The noise budget: what each qubit and coupler contributes, for reports and chip heat maps.
     qubits, couplers = {}, {}
     totals = {"gate_1q": 0.0, "gate_2q": 0.0, "idle": 0.0, "spectator": 0.0, "readout": 0.0, "zz_phase_rad": 0.0}
+    if topo:
+        totals.update(synthesis_measurements=0.0, magic_state=0.0)
 
     def flush_pair(pair, until):
         """Apply a pair's ZZ phase accumulated up to `until`."""
@@ -560,13 +562,18 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
         elif not virtual:
             one += 1
             error = device.qubit(wires[0], "error_1q") if scale else 0.
-            if magic:   # each T gate: its measurements and one magic state
-                per_t = 1 - (1 - error) * (1 - topo["magic_state_error"] * scale)
-                error = min(0.75, 1 - (1 - per_t) ** magic)
-                charge(wires[0], "magic_states", magic, None)
-                totals["magic_states"] = totals.get("magic_states", 0) + magic
             charge(wires[0], "gates_1q", 1)
-            if error:
+            if magic:   # each T gate: its parity measurements and one magic state
+                measured, injected = error * scale, topo["magic_state_error"] * scale
+                error = min(0.75, 1 - ((1 - measured) * (1 - injected)) ** magic)
+                if error:
+                    gate_error(wires, error, duration)
+                # First-order shares, so the budget shows which of the two dominates.
+                charge(wires[0], "magic_states", magic, None)
+                charge(wires[0], "synthesis_measurement_error", magic * measured, "synthesis_measurements")
+                charge(wires[0], "magic_state_error", magic * injected, "magic_state")
+                totals["magic_states"] = totals.get("magic_states", 0) + magic
+            elif error:
                 gate_error(wires, error * scale, duration)
                 charge(wires[0], "gate_error_1q", error * scale, "gate_1q")
         if topo and idle and duration:
@@ -595,7 +602,9 @@ def _schedule(ops, device, noise, idle, scale=1.0, thermal=False):
     budget = {"qubits": qubits, "couplers": couplers, "totals": totals,
               "note": "error sums are first-order (infidelities add); estimated_fidelity = exp(-sum of totals)"}
     if topo:
-        budget["note"] += "; on a tetron chip, idle_error is parity flips and magic_states counts T gates"
+        budget["note"] += ("; on a tetron chip, idle_error is parity flips, magic_states counts T gates, and each "
+                           "synthesized rotation's error is split into synthesis_measurements (the parity "
+                           "measurements of its T gates) and magic_state (the injected states)")
     return out, {"one_qubit_gates": one, "two_qubit_gates": two, "depth": max(level.values(), default=0),
                  "duration_s": end, "schedule": schedule, "noise_budget": budget}
 

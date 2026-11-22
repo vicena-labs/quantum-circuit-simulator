@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0rc5 (release candidate, not yet published) — honest convergence, clearer budgets
+
+- `--converge`, `refine` and `solve` now need three levels whose two successive changes are both within the tolerance, and report the larger change; `--levels` is at least 3, and `solve` truncates at 1e-4, 3.2e-5 and 1e-5. A run that meets this stops as "stable over three levels (empirical, not a bound)".
+- Correction to 0.5.0rc2: the 20-step kicked Ising value at θ = 0.4, 0.8360, was not converged. A tighter level gives 0.8394, and converged published simulations give 0.850 (Tindall et al., PRX Quantum 5, 010308). Coefficient truncation can stay level for several thresholds and then move, so agreement between levels is evidence, not a bound; the guide, hints and README now say to confirm such headline values independently.
+- `plan` recommends `--converge` instead of tightening the threshold by hand.
+- On a tetron chip, the noise budget splits each synthesized rotation's error into `synthesis_measurements` (its T gates' parity measurements) and `magic_state`, so a sensitivity sweep can see which dominates. The magic-state error is no longer scaled twice when `noise_scale` is not 1.
+- `resources.estimate` accepts a counts dict with only `logical_qubits` and `t_gates` or `t_count`, and says which keys are missing instead of raising a bare `KeyError`. Its assumptions state that its distillation factories are conservative: on a 33-million-T workload at p = 1e-3 it matches Microsoft's resource estimator on code distance and runtime but needs about three times the factory qubits.
+- Text files are read and written as UTF-8 on every platform, which fixes the Windows wheel tests.
+
 ## 0.5.0rc4 (release candidate, not yet published) — research workflows and topological chips
 
 - Add `chemistry`: PySCF molecules (named or by geometry) with active spaces, Jordan–Wigner, Bravyi–Kitaev and parity mappings, Z2 tapering, Hartree–Fock states and UCCSD; optional extra `chemistry`.
