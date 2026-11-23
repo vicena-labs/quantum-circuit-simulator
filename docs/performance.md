@@ -85,7 +85,7 @@ The local dense backend is a bounded capacity alternative with analytic noisy gr
 
 ## Coverage boundaries
 
-Julia PauliPropagation, CUDA cuPauliProp, MPO/MPDO, tensor networks and stochastic trajectories have not been timed here. The CPU suite records their absence and does not infer a ranking. Accurate trajectory comparisons require a common variance/error target. Unitary-only surrogates cannot silently replace deterministic T1/T2 evolution.
+CUDA cuPauliProp, MPO/MPDO and stochastic trajectories have not been timed. PauliPropagation.jl and quimb were timed only in the [independent harness](../benchmarks/independent/README.md), not in the CPU suite, which records their absence and does not infer a ranking. Accurate trajectory comparisons require a common variance/error target. Unitary-only surrogates cannot silently replace deterministic T1/T2 evolution.
 
 Historical benchmark results belong to their exact revisions, machines, circuit families and timing scopes. In particular, the previous restricted 127-wire fresh-circuit constructor, the general package API, and hosted agent/network/UI latency are different measurements. No current result establishes deployment latency or arbitrary 256-wire tractability.
 

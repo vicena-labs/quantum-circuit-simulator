@@ -58,6 +58,25 @@ It can also cross-check one method against another. Pauli propagation itself ret
 
 Supported operations include H, SX, X/Y/Z, RX/RY/RZ, CZ, ECR, fSim (theta derivative only), any fixed one- or two-qubit unitary, independent Pauli errors, one/two-qubit depolarization, zero-temperature T1/T2 relaxation, and asymmetric Z readout. Circuits address **1–16,384 logical qubits**; the Pauli-cone solver uses **at most 256 active wires per observable light cone**, and larger circuits are remapped into local cones. In exact mode, a cone too broad for its term budget is refused instead of answered partially. Nothing needs a hosted account, API key, internet connection at runtime, or proprietary application installation.
 
+## How fast it is
+
+A first comparison against the leading CPU simulators, measured with version 0.4.0 on one Apple M1 Pro laptop on 20 November 2026. Quantum Circuit Simulator ran on one thread; each other tool got the faster of one and eight threads. Every exact result agreed with every other to 4e-13. The other tools were [PauliPropagation.jl](https://github.com/MSRudolph/PauliPropagation.jl), [IBM pauli-prop](https://github.com/Qiskit/pauli-prop), [Qiskit Aer](https://github.com/Qiskit/qiskit-aer), [Qulacs](https://github.com/qulacs/qulacs), [PennyLane Lightning](https://github.com/PennyLaneAI/pennylane-lightning) and [quimb](https://github.com/jcmgray/quimb).
+
+| Workload, exact | Native backend, one evaluation | Graph backend, each further evaluation | Fastest other tool |
+| --- | ---: | ---: | --- |
+| Noisy circuits, 10–36 qubits | 5–35× faster | 53–225× faster | pauli-prop or PauliPropagation.jl, 2–9 ms |
+| Noisy circuits, 400–1,024 qubits | 70–270× faster | 3,800–12,000× faster | 0.5–4.2 s |
+| Noiseless, 20 qubits, 4 layers | 5× faster | 455× faster | Aer, 157 ms |
+| Noiseless, 12–20 qubits, 2 layers | 0.6× (slower) | 1.7–3.2× faster | PauliPropagation.jl surrogate, 0.05–0.1 ms |
+| IBM's 127-qubit kicked Ising, 5 steps | 0.07–5.7 s | — | none finished within 120 s |
+
+- **Gradients:** every shared-parameter gradient comes from one reverse pass, 82–2,180× faster than the other tools' parameter-shift gradients on noiseless circuits. No other tool tested returned gradients through T1/T2 noise.
+- **Truncated:** on the 127-qubit kicked Ising at a 1e-4 threshold, the graph takes 1.3–12 ms against 0.19–1.5 s for PauliPropagation.jl and 0.4–6 s for pauli-prop, with 4–15 times smaller errors.
+- **Where it loses:** exact mode refuses circuits of 6–8 layers and the 20-step kicked Ising, which quimb (0.19–2.2 s) and Aer (6.5 s) solve. At a 1e-5 truncation threshold PauliPropagation.jl finished several circuits that exceeded our term cap.
+- **Why it is fast:** each observable touches only its backward light cone, and a wire is contracted into the input state as soon as propagation passes it; observables with overlapping cones are propagated together; the C++ kernel rewrites only the terms a gate changes; and the graph backend compiles the propagation once into flat arithmetic, so each new parameter vector is one pass forward and one back.
+
+**These figures are preliminary.** The laptop was not idle, so single-thread figures vary by up to several times between runs. Graph timings exclude its one-off compilation (5–150 ms here), which repays itself after a few to a few tens of evaluations. GPU Pauli propagation, MPO and trajectory methods were not timed. [Performance](docs/performance.md) explains the method and the sources of the speed-ups, and [the full tables](benchmarks/independent/results-2026-11-20-laptop/v5_tables.md) keep every refusal and timeout.
+
 ## Install and run locally
 
 Use Python 3.10 or later. NumPy is the only runtime Python dependency. Binary wheels are published for Linux, macOS and Windows; on other platforms, installation compiles the extension and needs a C++17 compiler and Python development headers.
