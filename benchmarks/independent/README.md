@@ -1,6 +1,6 @@
 # Independent comparison harness
 
-These scripts compare Quantum Circuit Simulator with Qiskit Aer, Qulacs, PennyLane Lightning, IBM pauli-prop, quimb and PauliPropagation.jl on identical circuits, observables and parameter vectors. Each run is a fresh process with a time limit, and refusals and timeouts are recorded as results. [Preliminary results](results-2026-11-20-laptop/v5_tables.md) from one laptop are summarised in [measured performance](../../docs/performance.md#preliminary-comparison-of-040).
+These scripts compare Quantum Circuit Simulator with Qiskit Aer, Qulacs, PennyLane Lightning, IBM pauli-prop, quimb and PauliPropagation.jl on identical circuits, observables and parameter vectors. Each run is a fresh process with a time limit, and refusals and timeouts are recorded as results. [Preliminary results](results-2026-11-20-laptop/v5_tables.md) from an Apple M1 Pro laptop are summarised in [measured performance](../../docs/performance.md#preliminary-comparison-of-040), beside the earlier [CPU comparison](../results/README.md) on a Linux virtual machine.
 
 | File | Purpose |
 | --- | --- |

@@ -57,7 +57,7 @@ Dedicated value-only execution uses scalar coefficient storage and avoids tangen
 
 ## External CPU comparison
 
-The optional [comparison harness](../benchmarks/README.md) evaluates Qulacs, Qiskit Aer, IBM pauli-prop and an independent dense channel-adjoint implementation on the common supported subsets. It also compares native, graph and local-density Quantum Circuit Simulator paths. Full results, failures, timings, versions and final source hashes are in [CPU comparison evidence](../benchmarks/results/cpu_comparison_2026-11-19.json).
+The optional [comparison harness](../benchmarks/README.md) evaluates Qulacs, Qiskit Aer, IBM pauli-prop and an independent dense channel-adjoint implementation on the common supported subsets. The recorded run used version 0.2.0a1 on a Linux x86-64 virtual machine (Intel Xeon Platinum 8573C, nine logical processors, one requested thread per worker) on 2026-11-19. It also compares native, graph and local-density Quantum Circuit Simulator paths. Full results, failures, timings, versions and final source hashes are in [CPU comparison evidence](../benchmarks/results/cpu_comparison_2026-11-19.json).
 
 The suite records cold-process cost, preparation, fresh-angle resident evaluation, output accuracy and process RSS separately. Its five warm samples each contain three new vectors; the default has only one cold-process sample per pair. These are descriptive shared-host measurements, not confidence intervals or a production latency study.
 
