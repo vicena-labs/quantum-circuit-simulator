@@ -52,16 +52,23 @@ def test_dense_local_cone_not_full_register_and_reverse_shared_gradient():
 
 
 def test_explicit_auto_fallback_and_graph_budget_fallback():
-    c = Circuit(1, 1, max_terms=1).gate('RY', [0], .3, 0).gate('RZ', [0], .4)
-    obs = [(1., {0: 'X'})]
+    def brickwork(max_terms):
+        c = Circuit(4, 1, max_terms=max_terms)
+        for layer in range(3):
+            for q in range(4): c.gate('RY', [q], .3 + .1*q + .05*layer, 0 if q == 0 else -1)
+            for q in range(layer % 2, 3, 2): c.gate('CZ', [q, q + 1])
+        return c
+    obs = [(1., {1: 'X'})]
     with pytest.raises(ConeOverflow):
-        c.prepare(obs).evaluate()
-    automatic = c.prepare(obs, backend='auto')
+        brickwork(2).prepare(obs).evaluate()
+    reference = brickwork(1_000).prepare(obs).evaluate()
+    automatic = brickwork(2).prepare(obs, backend='auto')
     result = automatic.evaluate()
     assert result.backend == 'dense'
-    assert result.value == pytest.approx(math.sin(.3)*math.cos(.4), abs=2e-12)
-    assert result.gradient == pytest.approx((math.cos(.3)*math.cos(.4),), abs=2e-12)
+    assert result.value == pytest.approx(reference.value, abs=2e-12)
+    assert result.gradient == pytest.approx(reference.gradient, abs=2e-12)
     assert automatic.diagnostics['fallback_reason']
+    obs = [(1., {0: 'X'})]
     # Raising the sparse budget permits fallback from an intentionally tiny graph.
     c = Circuit(1, 1).gate('RY', [0], .3, 0)
     graph = c.prepare(obs, backend='graph', graph_max_nodes=1, graph_max_edges=1)

@@ -1,0 +1,7 @@
+quantum-circuit-simulator
+qiskit
+qiskit-aer
+qulacs
+pennylane
+quimb
+pauli-prop

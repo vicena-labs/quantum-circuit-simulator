@@ -17,7 +17,6 @@ def worker(name, coeff, weight, threads):
     import importlib.util
     spec = importlib.util.spec_from_file_location("bench", os.path.join(HERE, "bench.py"))
     bench = importlib.util.module_from_spec(spec); spec.loader.exec_module(bench)
-    import numpy as np
     from quantum_circuit_simulator import Circuit, Truncation
     w = bench.WORKLOADS[name]
     norm = sum(abs(c) for c, _ in w["obs"])
@@ -36,9 +35,7 @@ def worker(name, coeff, weight, threads):
         plan = c.prepare(w["obs"], truncation=Truncation(coeff / norm, None if weight == "Inf" else int(weight)),
                          threads=threads, backend=backend, graph_max_nodes=10_000_000, graph_max_edges=50_000_000)
         rec["prepare_s"] = time.perf_counter() - t
-        vecs = [[float(x) for x in v] for v in json.load(open(os.path.join(HERE, "results", "workloads.json")))[name]["vecs"]] \
-            if os.path.exists(os.path.join(HERE, "results", "workloads.json")) else None
-        vecs = vecs or [list(np.zeros(w["nparams"]))] * 7
+        vecs = [[float(v) for v in vec] for vec in bench.vectors(w)]
         reps = (len(vecs) - 1) // 2
         t = time.perf_counter(); r = plan.evaluate(vecs[0], gradients=False); rec["first_value_s"] = time.perf_counter() - t
         rec.update(value=r.value, error_bound=r.error_bound, backend=r.backend, since_start_to_first_value_s=time.perf_counter() - T0)

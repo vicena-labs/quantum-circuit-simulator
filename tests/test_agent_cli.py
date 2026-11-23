@@ -67,8 +67,9 @@ def test_errors_carry_actionable_hints(bell):
     assert code == 2 and error['type'] == 'UsageError' and '--observable' in error['hint']
     deep = {'schema_version': 1, 'n_qubits': 6, 'max_terms': 4,
             'operations': [{'op': op, 'wires': [q], 'theta': 0.3 * (q + 1)} for q in range(6) for op in ('RX', 'RY')]
-                          + [{'op': 'CZ', 'wires': [q, q + 1]} for q in range(5)]
-                          + [{'op': 'RY', 'wires': [q], 'theta': 0.2} for q in range(6)],
+                          + [gate for layer in range(3) for gate in
+                             [{'op': 'CZ', 'wires': [q, q + 1]} for q in range(layer % 2, 5, 2)]
+                             + [{'op': 'RY', 'wires': [q], 'theta': 0.2 + 0.1 * layer} for q in range(6)]],
             'observables': [{'coefficient': 1.0, 'pauli': {'2': 'X', '3': 'Z'}}]}
     code, out = cli(['run', '-'], json.dumps(deep))
     error = json.loads(out)['error']

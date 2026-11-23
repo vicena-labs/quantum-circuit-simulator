@@ -61,10 +61,13 @@ def test_large_wire_index_local_analytic_answer(n):
 
 @pytest.mark.parametrize('backend',['native','python'])
 def test_overflow_returns_no_partial_success(backend):
-    # The second gate branches before the input boundary. A single gate is
-    # now contracted immediately and legitimately fits in one live term.
-    c=Circuit(1,max_terms=1).gate('RY',[0],.3).gate('RZ',[0],.4)
-    with pytest.raises(ConeOverflow):c.prepare([(1.,{0:'X'})],backend=backend).evaluate()
+    # Gates on one or two wires merge into a stage that closes at once, so the
+    # overflow needs a brickwork wide enough to keep several terms open.
+    c=Circuit(4,max_terms=1)
+    for layer in range(3):
+        for q in range(4): c.gate('RY',[q],.3+.1*q+.05*layer)
+        for q in range(layer%2,3,2): c.gate('CZ',[q,q+1])
+    with pytest.raises(ConeOverflow):c.prepare([(1.,{1:'X'})],backend=backend).evaluate()
 
 
 @pytest.mark.parametrize('kwargs',[{'n_qubits':True},{'n_qubits':2.0},{'n_qubits':16385},{'n_qubits':0},

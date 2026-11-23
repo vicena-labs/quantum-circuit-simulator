@@ -70,6 +70,8 @@ def library():
     lib.pauli_graph_evaluate.restype=ct.c_int
     lib.pauli_graph_free.argtypes=[ct.c_void_p]
     lib.pauli_graph_free.restype=None
+    lib.pauli_bind_rotations.argtypes=[ct.POINTER(CStage),ct.c_int]+[ct.POINTER(ct.c_int32)]*4+[ct.POINTER(ct.c_double)]*4
+    lib.pauli_bind_rotations.restype=None
     return lib
 
 
@@ -91,16 +93,21 @@ class NativePrepared:
         self._dptm = view['dptm'] if view is not None else None
         self.params = view['param'] if view is not None else np.zeros(0, dtype=np.int32)
         # Each parameterised rotation is rewritten in four PTM and four
-        # derivative entries; everything else in its PTM is fixed.
-        self._rotations = []
-        for name, (first, second, sign) in _ROTATIONS.items():
-            chosen = [i for i, s in enumerate(circuit.stages) if s.param >= 0 and s.name == name]
-            if chosen:
-                self._rotations.append((
-                    np.array(chosen), np.array([circuit.stages[i].param for i in chosen]),
-                    np.array([circuit.stages[i].angle for i in chosen], dtype=float),
-                    np.array([circuit.stages[i].scale for i in chosen], dtype=float),
-                    first * 5, second * 5, first * 4 + second, second * 4 + first, sign))
+        # derivative entries; everything else in its PTM is fixed. One native
+        # call rebinds them all, since on small circuits rebinding in Python
+        # cost more than the propagation itself.
+        chosen = [(i, s) for i, s in enumerate(circuit.stages) if s.param >= 0 and s.name in _ROTATIONS]
+        def column(values, kind):
+            return (kind * len(chosen))(*values)
+        self._rotations = len(chosen), (
+            column([i for i, _ in chosen], ct.c_int32),
+            column([_ROTATIONS[s.name][0] for _, s in chosen], ct.c_int32),
+            column([_ROTATIONS[s.name][1] for _, s in chosen], ct.c_int32),
+            column([s.param for _, s in chosen], ct.c_int32),
+            column([s.angle for _, s in chosen], ct.c_double),
+            column([s.scale for _, s in chosen], ct.c_double),
+            column([_ROTATIONS[s.name][2] for _, s in chosen], ct.c_double))
+        self._shift_buffer = (ct.c_double * max(1, circuit.nparams))()
         self._other = [i for i, s in enumerate(circuit.stages)
                        if s.param >= 0 and s.name not in _ROTATIONS]
 
@@ -112,20 +119,10 @@ class NativePrepared:
         """
         if len(deltas)!=self.c.nparams or not all(math.isfinite(x) for x in deltas):
             raise ValueError('invalid shared-parameter vector')
-        shifts = np.asarray(deltas, dtype=float)
-        for index, param, base, scale, aa, bb, ab, ba, sign in self._rotations:
-            theta = base + scale * shifts[param]
-            c, s = np.cos(theta), np.sin(theta)
-            self._ptm[index, aa] = c
-            self._ptm[index, bb] = c
-            self._ptm[index, ab] = sign * s
-            self._ptm[index, ba] = -sign * s
-            # Chain rule: d/dshift = scale * d/dtheta.
-            sc, cc = scale * s, scale * c
-            self._dptm[index, aa] = -sc
-            self._dptm[index, bb] = -sc
-            self._dptm[index, ab] = sign * cc
-            self._dptm[index, ba] = -sign * cc
+        count, columns = self._rotations
+        if count:
+            self._shift_buffer[:len(deltas)] = deltas
+            library().pauli_bind_rotations(self.stages, count, *columns, self._shift_buffer)
         from ._reference import cached_gate_ptm, transfer, fsim
         for i in self._other:
             s = self.c.stages[i]

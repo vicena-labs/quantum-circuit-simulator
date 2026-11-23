@@ -152,11 +152,51 @@ for _steps, _theta, _obs in ((5, 0.0, "mz"), (5, math.pi / 8, "mz"), (5, math.pi
         n=_n, ops=_ops, nparams=1, obs=_o, noisy=False, layers=_steps, observable=_obs,
         note="IBM Eagle kicked Ising (Kim et al. 2023), theta_h shared", shift_scale=1e-3, zero_first=True)
 
-TOOLS = os.environ.get("BENCH_TOOLS", "").split(",") if os.environ.get("BENCH_TOOLS") else ["pauli_cones", "pauli_cones_graph", "qulacs", "aer", "lightning", "pauli_prop", "quimb"]
+
+def _wires(op):
+    return (op[1], op[2]) if op[0] == "CZ" else tuple(op[1]) if op[0] == "depol" else (op[1],)
+
+
+def cone_parts(w, mode):
+    """Cut a workload down to its observable's backward light cone, as an expert
+    would before handing it to a tool that does not do this itself (Quantum
+    Circuit Simulator does). `cone` keeps one circuit for the union of every
+    term's cone; `split` gives each observable term its own circuit, summed
+    afterwards. Each part is relabelled onto the fewest qubits, the smallest
+    system on which the cone never reaches an edge. A two-wire depolarizing
+    channel with one wire outside the cone acts on the inside wire as a
+    one-wire channel of strength 4p/5: both damp a Pauli that is non-identity
+    there by 1 - 16p/15."""
+    groups = [w["obs"]] if mode == "cone" else [[t] for t in w["obs"]]
+    parts = []
+    for obs in groups:
+        live = {q for _, p in obs for q in p}
+        kept = []
+        for op in reversed(w["ops"]):
+            inside = [q for q in _wires(op) if q in live]
+            if not inside:
+                continue
+            if op[0] == "CZ":
+                live.update(_wires(op))
+            elif op[0] == "depol" and len(inside) < len(op[1]):
+                op = ("depol", tuple(inside), 4 * op[2] / 5)
+            kept.append(op)
+        kept.reverse()
+        used = sorted({q for _, p in obs for q in p} | {q for op in kept for q in _wires(op)})
+        m = {q: i for i, q in enumerate(used)}
+        ops = [(o[0], m[o[1]], m[o[2]]) if o[0] == "CZ" else ("depol", tuple(m[q] for q in o[1]), o[2])
+               if o[0] == "depol" else (o[0], m[o[1]], *o[2:]) for o in kept]
+        parts.append(dict(w, n=len(used), ops=ops, obs=[(c, {m[q]: a for q, a in p.items()}) for c, p in obs]))
+    return parts
+
+
+CONES = os.environ.get("BENCH_CONES", "")  # "", "cone" or "split": see cone_parts
+
+TOOLS =os.environ.get("BENCH_TOOLS", "").split(",") if os.environ.get("BENCH_TOOLS") else ["pauli_cones", "pauli_cones_graph", "qulacs", "aer", "lightning", "pauli_prop", "quimb"]
 
 
 def eligible(w, tool):
-    n, noisy = w["n"], w["noisy"]
+    n, noisy = (max(p["n"] for p in cone_parts(w, CONES)) if CONES else w["n"]), w["noisy"]
     if tool in ("qulacs", "aer"):
         return n <= (10 if noisy else 26)
     if tool == "lightning":
@@ -418,9 +458,37 @@ class Quimb:
 
 
 def make(tool, w):
+    if CONES:
+        return Parts(tool, cone_parts(w, CONES))
     if tool == "pauli_cones": return PauliCones(w)
     if tool == "pauli_cones_graph": return PauliCones(w, "graph")
-    return {"qulacs": Qulacs, "aer": Aer, "lightning": Lightning, "pauli_prop": PauliProp, "quimb": Quimb}[tool](w)
+    a = {"qulacs": Qulacs, "aer": Aer, "lightning": Lightning, "pauli_prop": PauliProp, "quimb": Quimb}[tool](w)
+    if tool == "pauli_prop":
+        _fit_pauli_prop(a)
+    return a
+
+
+class Parts:
+    """One adapter per light-cone part; values and gradients add up."""
+    def __init__(self, tool, parts):
+        global CONES
+        mode, CONES = CONES, ""
+        try:
+            self.a = [make(tool, p) for p in parts]
+        finally:
+            CONES = mode
+        self.build = sum(a.build for a in self.a)
+        self.prepare = sum(a.prepare for a in self.a)
+
+    def value(self, s): return sum(a.value(s) for a in self.a)
+
+    def grad(self, s):
+        v, g = 0.0, [0.0] * len(s)
+        for a in self.a:
+            pv, pg = a.grad(s)
+            v += pv
+            g = [x + y for x, y in zip(g, pg)]
+        return v, g
 
 
 def worker(wname, tool):
@@ -430,8 +498,6 @@ def worker(wname, tool):
     vecs = vectors(w)
     try:
         a = make(tool, w)
-        if tool == "pauli_prop":
-            _fit_pauli_prop(a)
         rec.update(build_s=a.build, prepare_s=a.prepare)
         t = time.perf_counter(); rec["value"] = a.value(vecs[0]); rec["first_value_s"] = time.perf_counter() - t
         rec["since_import_to_first_value_s"] = time.perf_counter() - t0
@@ -500,7 +566,7 @@ def run(out, names, timeout):
                 rec["cold_process_wall_s"] = wall
             except subprocess.TimeoutExpired:
                 rec = dict(workload=name, tool=tool, error=f"timeout>{timeout}s")
-            rec.update(threads=NT, reps=REPS, python=py, n=w["n"], layers=w["layers"], noisy=w["noisy"], observable=w["observable"],
+            rec.update(cones=CONES or "none", pp_atol=os.environ.get("BENCH_PP_ATOL", "0"), threads=NT, reps=REPS, python=py, n=w["n"], layers=w["layers"], noisy=w["noisy"], observable=w["observable"],
                        obs_terms=len(w["obs"]), nparams=w["nparams"])
             with open(out, "a") as f:
                 f.write(json.dumps(rec) + "\n")
@@ -512,15 +578,17 @@ def run(out, names, timeout):
 
 
 def export(path, names):
-    """Workloads + the exact timed vectors as JSON for the Julia adapter."""
+    """Workloads + the exact timed vectors as JSON for the Julia adapters.
+    Each workload also carries its light-cone parts for pp_tuned.jl."""
+    def js(p):
+        return dict(n=p["n"], ops=[[o[0], list(o[1]) if isinstance(o[1], tuple) else o[1], *o[2:]] for o in p["ops"]],
+                    obs=[[c, {str(q): a for q, a in pp.items()}] for c, pp in p["obs"]])
     out = {}
     for name in names:
         w = WORKLOADS[name]
-        vecs = vectors(w)
-        out[name] = dict(n=w["n"], nparams=w["nparams"], noisy=w["noisy"], layers=w["layers"],
-                         observable=w["observable"],
-                         ops=[[o[0], list(o[1]) if isinstance(o[1], tuple) else o[1], *o[2:]] for o in w["ops"]],
-                         obs=[[c, {str(q): a for q, a in p.items()}] for c, p in w["obs"]], vecs=vecs)
+        out[name] = dict(js(w), nparams=w["nparams"], noisy=w["noisy"], layers=w["layers"],
+                         observable=w["observable"], vecs=vectors(w),
+                         parts={mode: [js(p) for p in cone_parts(w, mode)] for mode in ("cone", "split")})
     json.dump(out, open(path, "w"))
 
 

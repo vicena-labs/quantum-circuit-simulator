@@ -53,8 +53,8 @@ def test_router_prefers_exact_and_degrades_visibly(monkeypatch):
     dense = solve(_layered(5, 4, 4), obs)
     assert dense["method"] == "dense" and dense["value"] == pytest.approx(reference, abs=1e-12)
     # Ten wires exceed the dense backend, so the router truncates and reports convergence.
-    # Exact needs 131,088 terms here; truncation needs 72,526 (1e-4) and 114,251 (1e-5).
-    wide = solve(_layered(10, 7, 120_000), [(1.0, {5: "Z"})])
+    # Exact needs 10,100 terms here; truncation needs 8,847 (1e-4) and 10,026 (1e-5).
+    wide = solve(_layered(10, 7, 10_050), [(1.0, {5: "Z"})])
     assert not wide["exact"] and wide["method"] == "native truncated at 1e-05"
     exact_value = solve(_layered(10, 7, 1_000_000), [(1.0, {5: "Z"})])["value"]
     assert abs(wide["value"] - exact_value) <= wide["error_bound"]

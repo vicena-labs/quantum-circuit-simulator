@@ -189,13 +189,27 @@ def test_derivative_only_transition_and_rebinding_through_zeros():
         assert gradient[0] == pytest.approx(math.cos(shift), abs=2e-14)
 
 
+def _brickwork(max_terms, angle=None):
+    # Wide enough that merged stages keep several terms open; angle=0 makes
+    # every rotation the identity, so only derivatives branch.
+    circuit = NoisyPauliCircuit(4, 1, max_terms=max_terms)
+    for layer in range(3):
+        for q in range(4):
+            if angle is None:
+                circuit.gate('RY', (q,), .3 + .1 * q + .05 * layer, param=0 if q == 0 else -1)
+            else:
+                circuit.gate('RX', (q,), angle, param=0)
+        for q in range(layer % 2, 3, 2):
+            circuit.gate('CZ', (q, q + 1))
+    return circuit
+
+
 def test_uncontracted_expansion_still_fails_closed():
-    circuit = NoisyPauliCircuit(1, 1, max_terms=1)
-    circuit.gate('RY', (0,), .23).gate('RZ', (0,), .41, param=0)
+    circuit = _brickwork(2)
     with pytest.raises(ConeOverflow):
-        NativePrepared(circuit).evaluate([(1., {0: 'X'})])
+        NativePrepared(circuit).evaluate([(1., {1: 'X'})])
     with pytest.raises(ConeOverflow):
-        circuit.evaluate([(1., {0: 'X'})])
+        circuit.evaluate([(1., {1: 'X'})])
 
 
 def _call(circuit, observables, initial='zero', value_only=False, indices=None):
@@ -246,14 +260,14 @@ def test_value_only_abi_keeps_parameters_and_writes_one_double(indexed):
 
 
 def test_value_only_drops_derivative_only_expansion():
-    circuit = NoisyPauliCircuit(1, 1, max_terms=1)
-    circuit.gate('RY', (0,), .23).gate('RZ', (0,), 0., param=0)
-    # X -> X at zero RZ, but d(X)/dtheta -> Y. With a term cap of one,
-    # the value fits and the full tangent propagation must fail honestly.
-    code, value, _ = _call(circuit, [(1., {0: 'X'})], value_only=True)
+    circuit = _brickwork(1, angle=0.)
+    # Z1 -> Z1 through identity rotations and CZs, but d/dtheta of each RX
+    # branches into Y. With a term cap of one, the value fits and the full
+    # tangent propagation must fail honestly.
+    code, value, _ = _call(circuit, [(1., {1: 'Z'})], value_only=True)
     assert code == 0
-    assert value[0] == pytest.approx(math.sin(.23), abs=2e-14)
-    code, _, _ = _call(circuit, [(1., {0: 'X'})])
+    assert value[0] == pytest.approx(1., abs=2e-14)
+    code, _, _ = _call(circuit, [(1., {1: 'Z'})])
     assert code == -1
 
 

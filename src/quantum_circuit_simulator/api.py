@@ -255,7 +255,7 @@ class Prepared:
                 canonical.append((coefficient, dict(word)))
         self.requested_backend = backend
         self.backend = 'native' if backend == 'auto' else backend
-        self._circuit = copy.deepcopy(circuit._impl)
+        self._circuit = circuit._impl.snapshot()
         self._observables = tuple(canonical)
         self._lock = threading.Lock()
         self._plan = None
@@ -388,6 +388,10 @@ class Prepared:
     def _shifts(self, shifts):
         values = [0.0]*self.n_parameters if shifts is None else list(shifts)
         if len(values) != self.n_parameters: raise ValueError("one finite shift per shared parameter is required")
+        # Plain finite floats, the common case in an optimiser loop, need no
+        # per-element conversion.
+        if all(isinstance(x, float) and math.isfinite(x) for x in values):
+            return tuple(map(float, values))
         return tuple(_real(x, "parameter shift") for x in values)
 
     def _evaluate_locked(self, shifts, gradients):

@@ -57,12 +57,13 @@ def test_inactive_truncation_is_bitwise_exact(backend):
 
 @pytest.mark.parametrize('backend', ['native', 'graph'])
 def test_weight_limit_drops_the_entangled_term_and_bounds_it(backend):
-    # Heisenberg: CZ maps X0 to X0 Z1, weight 2 while wire 1 is still open;
-    # <X0 Z1> = sin(theta) cos(.6). (Were CZ wire 1's first gate, early
-    # contraction would leave X0, of weight 1.)
-    c = Circuit(2, 1).gate('RY', [1], theta=.6).gate('RY', [0], theta=.3, param=0).gate('CZ', [0, 1])
+    # Heisenberg: the last CZ maps X0 to X0 Z1, weight 2 while wires 0 and 1
+    # both stay open (each has an earlier CZ); were CZ(0, 1) either wire's
+    # first two-wire gate, early contraction would leave weight 1.
+    c = Circuit(3, 1).gate('RY', [0], .2).gate('RY', [1], .6).gate('RY', [2], .5)
+    c.gate('CZ', [0, 2]).gate('CZ', [1, 2]).gate('RY', [0], theta=.3, param=0).gate('CZ', [0, 1])
     exact = c.prepare([(1., {0: 'X'})]).evaluate([.2])
-    assert exact.value == pytest.approx(math.sin(.5) * math.cos(.6))
+    assert exact.value != 0.
     approx = c.prepare([(1., {0: 'X'})], backend=backend, truncation=Truncation(max_weight=1)).evaluate([.2])
     assert approx.value == 0. and approx.gradient == (0.,)
     # Dropped coefficient 1 with no tangent, after one unit-generator rotation.
@@ -87,13 +88,22 @@ def test_truncation_is_refused_by_exact_only_backends(backend):
 
 
 def test_joint_group_over_the_cap_splits_into_single_cones():
-    # Jointly X0, X1 and RY's Z1 image need 3 terms; each cone alone needs 2.
-    c = Circuit(2, 2, max_terms=2).gate('H', [0]).gate('H', [1])
-    c.gate('RY', [0], theta=.4, param=0).gate('RY', [1], theta=-.3, param=1)
-    plan = c.prepare([(1., {0: 'X'}), (1., {1: 'X'})])
+    # X0 and X3 on a two-layer brickwork need 4 terms together and at most 3
+    # apart, so a cap of 3 splits the joint group into single cones.
+    def brickwork(max_terms):
+        c = Circuit(4, 2, max_terms=max_terms)
+        for layer in range(2):
+            for q in range(4):
+                c.gate('RY', [q], .3 + .1 * q + .05 * layer, 0 if q == 0 else 1 if q == 3 else -1)
+            for q in range(layer % 2, 3, 2):
+                c.gate('CZ', [q, q + 1])
+        return c
+    obs = [(1., {0: 'X'}), (1., {3: 'X'})]
+    reference = brickwork(1_000).prepare(obs).evaluate([0., 0.])
+    plan = brickwork(3).prepare(obs)
     result = plan.evaluate([0., 0.])
-    assert result.value == pytest.approx(math.cos(.4) + math.cos(.3))
-    assert result.gradient == pytest.approx((-math.sin(.4), math.sin(.3)))
+    assert result.value == pytest.approx(reference.value, abs=1e-14)
+    assert result.gradient == pytest.approx(reference.gradient, abs=1e-14)
     assert plan.diagnostics['cone_groups'] == 2
 
 

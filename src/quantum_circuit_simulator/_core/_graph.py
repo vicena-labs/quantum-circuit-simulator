@@ -255,7 +255,10 @@ class GraphPrepared(ConeGroups):
         shifts = tuple(shifts)
         if len(shifts) != self.c.nparams or not all(math.isfinite(x) for x in shifts):
             raise ValueError("one finite shift per shared parameter required")
-        if len(self._params) and not np.all(np.isfinite(self._angles + np.asarray(shifts)[self._params])):
+        # Finite base angles plus finite shifts overflow only for shifts near
+        # the float limit, so the vector check runs only then.
+        if (len(self._params) and max(map(abs, shifts), default=0.) > 1e300
+                and not np.all(np.isfinite(self._angles + np.asarray(shifts)[self._params]))):
             raise ValueError("bound angle must be finite")
         self.full.bind(shifts)
         return self
@@ -289,7 +292,11 @@ class GraphPrepared(ConeGroups):
 
     def _run(self, with_gradients):
         width = self.c.nparams + 1 if with_gradients else 1
-        out, bounds = (ct.c_double * width)(), (ct.c_double * width)()
+        # Output buffers are reused: allocating them was a visible share of
+        # a small circuit's evaluation.
+        if getattr(self, "_buffers", None) is None:
+            self._buffers = (ct.c_double * (self.c.nparams + 1))(), (ct.c_double * (self.c.nparams + 1))()
+        out, bounds = self._buffers
         code = library().pauli_graph_evaluate(
             self._handle, self.c.nparams, self.full.stages, len(self.full.stages),
             int(with_gradients), self.threads, out, bounds)

@@ -282,6 +282,392 @@ struct Row {
     std::array<Transition, 16> transitions;
 };
 
+inline int lowest_bit(uint64_t v) {
+#ifdef _MSC_VER
+    unsigned long index;
+    _BitScanForward64(&index, v);
+    return static_cast<int>(index);
+#else
+    return __builtin_ctzll(v);
+#endif
+}
+
+// Specialise one row of a dim x dim transfer matrix: the labels it reaches,
+// with wires whose earliest stage this is projected onto the product input.
+bool build_row(Row& r, int row, const double* ptm, const double* dptm, int dim, bool tangent,
+               bool close0, bool close1, int initial_mode) {
+    int count = 0;
+    for (int label = 0; label < dim; ++label) {
+        const double value = ptm[row * dim + label];
+        const double derivative = tangent ? dptm[row * dim + label] : 0.;
+        if (!std::isfinite(value) || !std::isfinite(derivative)) return false;
+        // dt-only transitions at an exact zero of t still carry real
+        // first derivatives and must remain in this union.
+        if (std::abs(value) <= TRANSFER_ZERO && std::abs(derivative) <= TRANSFER_ZERO) continue;
+        if ((close0 && !nonzero_input_overlap(label & 3, initial_mode)) ||
+            (close1 && !nonzero_input_overlap(label >> 2, initial_mode))) continue;
+        const int projected = (close0 ? 0 : (label & 3)) | (close1 ? 0 : (label & 12));
+        // Closing a wire maps several labels to one; sum them here, or a
+        // term crossing many closing stages of a layer would expand into
+        // exponentially many copies of the same image.
+        int j = 0;
+        while (j < count && r.transitions[j].label != projected) ++j;
+        if (j < count) {
+            r.transitions[j].value += value;
+            r.transitions[j].derivative += derivative;
+        } else {
+            r.transitions[count++] = {projected, value, derivative};
+        }
+    }
+    r.size = count;
+    r.diagonal = count == 1 && r.transitions[0].label == row;
+    r.identity = r.diagonal && r.transitions[0].value == 1. && r.transitions[0].derivative == 0.;
+    return true;
+}
+
+// The exact solver's unit of work: one gate merged with the channels and
+// single-wire gates beside it on the same wires, in the cone's own wire
+// numbering. At most one merged stage carries a shared parameter, so the
+// merged derivative is one product. `last_step` is the latest original stage
+// it contains, which places truncation cuts for the gradient bound.
+struct Fused {
+    int q0, q1, arity, param, last_step;
+    std::array<double, 256> ptm, dptm;
+};
+
+// `m` (a stage on wires a, b; b < 0 for one wire) as a 16x16 transfer matrix
+// on the merged stage's wires f0, f1, whose labels are l0 | l1 << 2.
+void embed(const double* m, int arity, int a, int b, int f0, double* out) {
+    for (int r = 0; r < 16; ++r)
+        for (int c = 0; c < 16; ++c) {
+            const int r0 = r & 3, r1 = r >> 2, c0 = c & 3, c1 = c >> 2;
+            double v;
+            if (arity == 1) v = a == f0 ? (r1 == c1 ? m[r0 * 4 + c0] : 0.) : (r0 == c0 ? m[r1 * 4 + c1] : 0.);
+            else if (a == f0) v = m[r * 16 + c];
+            else v = m[(r1 | r0 << 2) * 16 + (c1 | c0 << 2)];
+            out[r * 16 + c] = v;
+        }
+    (void)b;
+}
+
+// Transfer matrices of gates and channels are mostly zeros, so the product
+// skips them: merging costs a few operations per stage, not dim^3.
+void multiply(const double* x, const double* y, int dim, double* out) {
+    std::fill_n(out, dim * dim, 0.);
+    for (int r = 0; r < dim; ++r)
+        for (int k = 0; k < dim; ++k) {
+            const double v = x[r * dim + k];
+            if (v == 0.) continue;
+            for (int c = 0; c < dim; ++c) out[r * dim + c] += v * y[k * dim + c];
+        }
+}
+
+// f becomes `later` applied after f (later = false: `earlier` applied
+// before f). Heisenberg propagation meets the later operation first, so the
+// merged transfer matrix is T_later * T_earlier.
+void compose(Fused& f, const double* ptm, const double* dptm, int param, int arity, int a, int b,
+             bool later) {
+    const int dim = f.arity == 1 ? 4 : 16;
+    std::array<double, 256> m, dm, product;
+    if (f.arity == 1) {
+        std::copy_n(ptm, 16, m.begin());
+        std::copy_n(dptm, 16, dm.begin());
+    } else {
+        embed(ptm, arity, a, b, f.q0, m.data());
+        embed(dptm, arity, a, b, f.q0, dm.data());
+    }
+    if (later) {
+        if (param >= 0) multiply(dm.data(), f.ptm.data(), dim, f.dptm.data());
+        else if (f.param >= 0) { multiply(m.data(), f.dptm.data(), dim, product.data()); f.dptm = product; }
+        multiply(m.data(), f.ptm.data(), dim, product.data());
+    } else {
+        if (param >= 0) multiply(f.ptm.data(), dm.data(), dim, f.dptm.data());
+        else if (f.param >= 0) { multiply(f.dptm.data(), m.data(), dim, product.data()); f.dptm = product; }
+        multiply(f.ptm.data(), m.data(), dim, product.data());
+    }
+    f.ptm = product;
+    if (param >= 0) f.param = param;
+}
+
+// Merge the cone's stages: a single-wire stage joins the latest merged stage
+// on its wire, and a two-wire stage joins the latest one on the same pair or
+// absorbs the single-wire stages that end on its wires. Moving a stage this
+// way is exact, because no stage between them touches its wires.
+// Absorbed stages stay in place with `alive` cleared, which avoids copying
+// every merged matrix again.
+void fuse(Request const& rq, std::vector<Fused>& fused, std::vector<char>& alive) {
+    fused.clear();
+    alive.clear();
+    fused.reserve(rq.nstages);
+    std::array<int, 256> last;
+    last.fill(-1);
+    // Only the dim x dim block of each matrix is used, so only it is filled.
+    auto fresh = [&](CStage const& s, int q0, int q1, int step) {
+        Fused f;
+        f.q0 = q0, f.q1 = q1, f.arity = s.arity, f.param = s.param, f.last_step = step;
+        const int n = s.arity == 1 ? 16 : 256;
+        std::copy_n(s.ptm, n, f.ptm.begin());
+        if (s.param >= 0) std::copy_n(s.dptm, n, f.dptm.begin());
+        else std::fill_n(f.dptm.begin(), n, 0.);
+        return f;
+    };
+    for (int step = 0; step < rq.nstages; ++step) {
+        CStage const& s = rq.stage(step);
+        int q0, q1;
+        rq.wires(step, q0, q1);
+        if (s.arity == 1) {
+            const int p = last[q0];
+            if (p >= 0 && !(fused[p].param >= 0 && s.param >= 0)) {
+                compose(fused[p], s.ptm, s.dptm, s.param, 1, q0, -1, true);
+                fused[p].last_step = step;
+                continue;
+            }
+            last[q0] = static_cast<int>(fused.size());
+            fused.push_back(fresh(s, q0, q1, step));
+            alive.push_back(1);
+            continue;
+        }
+        const int pa = last[q0], pb = last[q1];
+        if (pa >= 0 && pa == pb && !(fused[pa].param >= 0 && s.param >= 0)) {
+            compose(fused[pa], s.ptm, s.dptm, s.param, 2, q0, q1, true);
+            fused[pa].last_step = step;
+            continue;
+        }
+        Fused f = fresh(s, q0, q1, step);
+        for (int p : {pa, pb}) {
+            if (p < 0 || !alive[p] || fused[p].arity != 1 || (fused[p].param >= 0 && f.param >= 0)) continue;
+            compose(f, fused[p].ptm.data(), fused[p].dptm.data(), fused[p].param, 1, fused[p].q0, -1, false);
+            alive[p] = 0;
+        }
+        last[q0] = last[q1] = static_cast<int>(fused.size());
+        fused.push_back(f);
+        alive.push_back(1);
+    }
+}
+
+// Propagation by layers. Merged stages are scheduled backwards as soon as
+// every later stage on their wires has run, so each layer's stages act on
+// distinct wires and commute. One pass over the table per layer finds the
+// terms a layer changes; each such term goes through all of its stages at
+// once and is inserted once per image, instead of once per stage. Terms are
+// filtered after each layer at a cut just past the latest original stage not
+// yet applied, so a truncated gradient's bound covers every stage still ahead
+// of a discarded term (and a few already behind it, which only loosens it).
+template<int W, bool WithGradient, typename Filter, typename Discard>
+bool propagate_layers(Request const& rq, TermTable<W>& terms, Filter& filter, Discard& discard,
+                      Result& result) {
+    using Table = TermTable<W>;
+    constexpr int KW = Table::KW;
+    const int noutputs = WithGradient ? rq.nparams + 1 : 1;
+    std::vector<Fused> stages;
+    std::vector<char> alive;
+    fuse(rq, stages, alive);
+    const int n = static_cast<int>(stages.size());
+
+    std::array<int, 256> first_touch, level;
+    first_touch.fill(-1);
+    level.fill(-1);
+    for (int i = 0; i < n; ++i) {
+        if (!alive[i]) continue;
+        Fused const& f = stages[i];
+        if (first_touch[f.q0] < 0) first_touch[f.q0] = i;
+        if (f.arity == 2 && first_touch[f.q1] < 0) first_touch[f.q1] = i;
+    }
+    std::vector<std::vector<int>> layers;
+    for (int i = n - 1; i >= 0; --i) {
+        if (!alive[i]) continue;
+        Fused const& f = stages[i];
+        const int l = 1 + std::max(level[f.q0], f.arity == 2 ? level[f.q1] : -1);
+        level[f.q0] = l;
+        if (f.arity == 2) level[f.q1] = l;
+        if (l >= static_cast<int>(layers.size())) layers.resize(l + 1);
+        layers[l].push_back(i);
+    }
+
+    // cut_from[l] lies just past every original stage in layers l onwards;
+    // terms discarded after layer l use cut_from[l + 1], and branches
+    // discarded inside layer l use cut_from[l].
+    std::vector<int> cut_from(layers.size() + 1, 0);
+    for (int l = static_cast<int>(layers.size()) - 1; l >= 0; --l) {
+        int latest = cut_from[l + 1] - 1;
+        for (int i : layers[l]) latest = std::max(latest, stages[i].last_step);
+        cut_from[l] = latest + 1;
+    }
+    // In truncated mode a branch below the threshold is dropped as soon as a
+    // stage produces it, so a layer never holds more than per-stage
+    // truncation would.
+    const double prune_below = rq.truncate_below;
+
+    struct Touch { int stage; int row; };
+    std::array<int, 256> owner;
+    owner.fill(-1);
+    std::vector<std::array<Row, 16>> rows;
+    std::vector<uint32_t> seen;
+    std::vector<Touch> touches, pending_touches;
+    std::vector<uint64_t> pending_keys, stack_keys;
+    std::vector<double> pending_coefs, stack_coefs;
+    std::vector<uint32_t> pending_start;
+
+    for (size_t l = 0; l < layers.size(); ++l) {
+        std::vector<int> const& layer = layers[l];
+        const int m = static_cast<int>(layer.size());
+        std::array<uint64_t, W> mask{};
+        // Reset only the row sizes: value-initialising every transition
+        // dominated small circuits.
+        if (static_cast<int>(rows.size()) < m) rows.resize(m);
+        for (int i = 0; i < m; ++i)
+            for (Row& r : rows[i]) r.size = -1;
+        seen.assign(m, 0);
+        for (int i = 0; i < m; ++i) {
+            Fused const& f = stages[layer[i]];
+            owner[f.q0] = i;
+            mask[f.q0 >> 6] |= 1ULL << (f.q0 & 63);
+            if (f.arity == 2) {
+                owner[f.q1] = i;
+                mask[f.q1 >> 6] |= 1ULL << (f.q1 & 63);
+            }
+        }
+        auto label = [](const uint64_t* k, int q) {
+            const uint64_t b = 1ULL << (q & 63);
+            return ((k[q >> 6] & b) ? 1 : 0) + ((k[W + (q >> 6)] & b) ? 2 : 0);
+        };
+        // The stage's row for this key, built on first use.
+        auto row_of = [&](int i, const uint64_t* k, Row*& r) -> int {
+            Fused const& f = stages[layer[i]];
+            int row = label(k, f.q0);
+            if (f.arity == 2) row += label(k, f.q1) << 2;
+            r = &rows[i][row];
+            if (r->size < 0 &&
+                !build_row(*r, row, f.ptm.data(), f.dptm.data(), f.arity == 1 ? 4 : 16,
+                           WithGradient && f.param >= 0, first_touch[f.q0] == layer[i],
+                           f.arity == 2 && first_touch[f.q1] == layer[i], rq.initial_mode))
+                return -1;
+            return row;
+        };
+
+        // Pass 1: rescale terms that only meet diagonal rows in place, and
+        // move out the terms some stage of the layer changes.
+        pending_keys.clear();
+        pending_coefs.clear();
+        pending_touches.clear();
+        pending_start.clear();
+        uint32_t stamp = 0;
+        for (size_t s = 0; s < terms.capacity(); ++s) {
+            const uint8_t st = terms.state[s];
+            if (st != Table::LIVE && st != Table::CHANGED) continue;
+            const uint64_t* k = &terms.keys[s * KW];
+            touches.clear();
+            bool moves = false;
+            ++stamp;
+            for (int j = 0; j < W; ++j) {
+                uint64_t bits = (k[j] | k[W + j]) & mask[j];
+                while (bits) {
+                    const int q = j * 64 + lowest_bit(bits);
+                    bits &= bits - 1;
+                    const int i = owner[q];
+                    if (seen[i] == stamp) continue;
+                    seen[i] = stamp;
+                    Row* r;
+                    const int row = row_of(i, k, r);
+                    if (row < 0) { result.code = -2; return false; }
+                    if (r->identity) continue;
+                    touches.push_back({i, row});
+                    if (!r->diagonal) moves = true;
+                }
+            }
+            if (touches.empty()) continue;
+            double* c = &terms.coefs[s * terms.stride];
+            if (!moves) {
+                for (Touch const& t : touches) {
+                    Transition const& tr = rows[t.stage][t.row].transitions[0];
+                    const double c0 = c[0];
+                    for (int j = 0; j < noutputs; ++j) c[j] *= tr.value;
+                    const int param = stages[layer[t.stage]].param;
+                    if (WithGradient && param >= 0) c[param + 1] += tr.derivative * c0;
+                }
+                terms.state[s] = Table::CHANGED;
+                continue;
+            }
+            bool vanishes = false;
+            for (Touch const& t : touches) vanishes |= rows[t.stage][t.row].size == 0;
+            if (!vanishes) {
+                pending_start.push_back(static_cast<uint32_t>(pending_touches.size()));
+                pending_touches.insert(pending_touches.end(), touches.begin(), touches.end());
+                pending_keys.insert(pending_keys.end(), k, k + KW);
+                pending_coefs.insert(pending_coefs.end(), c, c + noutputs);
+            }
+            terms.erase(s);
+        }
+        pending_start.push_back(static_cast<uint32_t>(pending_touches.size()));
+
+        // Pass 2: expand each moved term through its stages, depth first,
+        // and merge its images. Exceeding the hard cap always fails.
+        stack_keys.resize(static_cast<size_t>(m + 1) * KW);
+        stack_coefs.resize(static_cast<size_t>(m + 1) * noutputs);
+        const size_t moved = pending_start.size() - 1;
+        for (size_t p = 0; p < moved; ++p) {
+            const Touch* touch = &pending_touches[pending_start[p]];
+            const int depth_end = static_cast<int>(pending_start[p + 1] - pending_start[p]);
+            std::copy_n(&pending_keys[p * KW], KW, stack_keys.begin());
+            std::copy_n(&pending_coefs[p * noutputs], noutputs, stack_coefs.begin());
+            auto expand = [&](auto&& self, int depth) -> bool {
+                uint64_t* k = &stack_keys[static_cast<size_t>(depth) * KW];
+                double* c = &stack_coefs[static_cast<size_t>(depth) * noutputs];
+                if (depth == depth_end) {
+                    const size_t slot = terms.find_or_insert(k, rq.max_terms);
+                    if (slot == SIZE_MAX) return false;
+                    double* destination = &terms.coefs[slot * terms.stride];
+                    for (int j = 0; j < noutputs; ++j) destination[j] += c[j];
+                    terms.state[slot] = Table::CHANGED;
+                    return true;
+                }
+                Fused const& f = stages[layer[touch[depth].stage]];
+                Row const& r = rows[touch[depth].stage][touch[depth].row];
+                const bool tangent = WithGradient && f.param >= 0;
+                uint64_t* next_key = k + KW;
+                double* next = c + noutputs;
+                const int w0 = f.q0 >> 6, w1 = f.q1 >> 6;
+                const uint64_t b0 = 1ULL << (f.q0 & 63), b1 = f.arity == 2 ? 1ULL << (f.q1 & 63) : 0;
+                for (int i = 0; i < r.size; ++i) {
+                    Transition const& t = r.transitions[i];
+                    std::copy_n(k, KW, next_key);
+                    next_key[w0] = (next_key[w0] & ~b0) | ((t.label & 1) ? b0 : 0);
+                    next_key[W + w0] = (next_key[W + w0] & ~b0) | ((t.label & 2) ? b0 : 0);
+                    if (f.arity == 2) {
+                        next_key[w1] = (next_key[w1] & ~b1) | ((t.label & 4) ? b1 : 0);
+                        next_key[W + w1] = (next_key[W + w1] & ~b1) | ((t.label & 8) ? b1 : 0);
+                    }
+                    double magnitude = 0.;
+                    for (int j = 0; j < noutputs; ++j) {
+                        next[j] = t.value * c[j];
+                        magnitude = std::max(magnitude, std::abs(next[j]));
+                    }
+                    if (tangent) {
+                        next[f.param + 1] += t.derivative * c[0];
+                        magnitude = std::max(magnitude, std::abs(next[f.param + 1]));
+                    }
+                    if (magnitude < prune_below) {
+                        discard(next, cut_from[l]);
+                        continue;
+                    }
+                    if (!self(self, depth + 1)) return false;
+                }
+                return true;
+            };
+            if (!expand(expand, 0)) { result.code = -1; return false; }
+        }
+        for (int i = 0; i < m; ++i) {
+            Fused const& f = stages[layer[i]];
+            owner[f.q0] = -1;
+            if (f.arity == 2) owner[f.q1] = -1;
+        }
+        // The table is largest now, before this layer's discards.
+        result.peak_terms = std::max<uint64_t>(result.peak_terms, terms.size);
+        if (!filter(cut_from[l + 1])) { result.code = -2; return false; }
+    }
+    return true;
+}
+
 template<int W, bool WithGradient>
 void run_cone(Request const& rq, Result& result) {
     using Table = TermTable<W>;
@@ -290,7 +676,6 @@ void run_cone(Request const& rq, Result& result) {
     const bool truncating = rq.truncate_below > 0. || rq.max_weight >= 0;
     ConeLayout<W> layout;
     if (!layout.build(rq)) { result.code = -2; return; }
-    auto const& first_touch = layout.first_touch;
     // Bound on |d Tr(rho_t P)/d theta_j| from the parameterised stages before
     // cut t: prefix sums of each stage's 2*||generator||.
     std::vector<double> lipschitz_before;
@@ -328,11 +713,22 @@ void run_cone(Request const& rq, Result& result) {
             observable_norm += std::abs(terms.coefs[s * terms.stride]);
     const double coefficient_zero = COEFFICIENT_ZERO * observable_norm;
 
-    // Drop roundoff and, when truncating, small or heavy terms among those
-    // changed since the last pass. `cut` is the number of stages before them.
-    auto filter = [&](int cut) -> bool {
+    // Add a discarded coefficient to the error bounds. `cut` is the number of
+    // stages that may still act on it. Roundoff drops are counted too, so the
+    // bound covers every discarded coefficient.
+    auto discard = [&](const double* c, int cut) {
+        if (!truncating) return;
         const double* before = lipschitz_before.empty() ? nullptr
             : &lipschitz_before[static_cast<size_t>(cut) * rq.nparams];
+        ++result.truncated_terms;
+        result.value_bound += std::abs(c[0]);
+        if constexpr (WithGradient)
+            for (int j = 0; j < rq.nparams; ++j)
+                result.gradient_bound[j] += std::abs(c[j + 1]) + (before ? std::abs(c[0]) * before[j] : 0.);
+    };
+    // Drop roundoff and, when truncating, small or heavy terms among those
+    // changed since the last pass.
+    auto filter = [&](int cut) -> bool {
         for (size_t s = 0; s < terms.capacity(); ++s) {
             if (terms.state[s] != Table::CHANGED) continue;
             double* c = &terms.coefs[s * terms.stride];
@@ -352,118 +748,14 @@ void run_cone(Request const& rq, Result& result) {
                 }
             }
             if (!drop) { terms.state[s] = Table::LIVE; continue; }
-            if (truncating) {
-                // Roundoff drops are counted too, so the bound covers every
-                // discarded coefficient.
-                ++result.truncated_terms;
-                result.value_bound += std::abs(c[0]);
-                if constexpr (WithGradient)
-                    for (int j = 0; j < rq.nparams; ++j)
-                        result.gradient_bound[j] += std::abs(c[j + 1]) +
-                            (before ? std::abs(c[0]) * before[j] : 0.);
-            }
+            discard(c, cut);
             terms.erase(s);
         }
         return true;
     };
     if (truncating && !filter(rq.nstages)) { result.code = -2; return; }
 
-    std::vector<uint64_t> pending_keys;
-    std::vector<double> pending_coefs;
-    std::vector<uint8_t> pending_rows;
-    for (int step = rq.nstages - 1; step >= 0; --step) {
-        CStage const& stage = rq.stage(step);
-        int q0, q1;
-        rq.wires(step, q0, q1);
-        const int dim = stage.arity == 1 ? 4 : 16;
-        const bool close0 = first_touch[q0] == step;
-        const bool close1 = stage.arity == 2 && first_touch[q1] == step;
-        const bool tangent = WithGradient && stage.param >= 0;
-        // Lazily specialise each local input row once per stage. Clifford
-        // permutations and diagonal noise then use one transition per row;
-        // unused rows cost no dense scan. Rebuild on every call so rebinding
-        // through zero angles cannot freeze a stale transition pattern.
-        std::array<Row, 16> rows;
-        auto build = [&](int row) -> bool {
-            Row& r = rows[row];
-            int count = 0;
-            for (int label = 0; label < dim; ++label) {
-                const double value = stage.ptm[row * dim + label];
-                const double derivative = tangent ? stage.dptm[row * dim + label] : 0.;
-                if (!std::isfinite(value) || !std::isfinite(derivative)) return false;
-                // dt-only transitions at an exact zero of t still carry real
-                // first derivatives and must remain in this union.
-                if (std::abs(value) <= TRANSFER_ZERO && std::abs(derivative) <= TRANSFER_ZERO) continue;
-                if ((close0 && !nonzero_input_overlap(label & 3, rq.initial_mode)) ||
-                    (close1 && !nonzero_input_overlap(label >> 2, rq.initial_mode))) continue;
-                const int projected = (close0 ? 0 : (label & 3)) | (close1 ? 0 : (label & 12));
-                r.transitions[count++] = {projected, value, derivative};
-            }
-            r.size = count;
-            r.diagonal = count == 1 && r.transitions[0].label == row;
-            r.identity = r.diagonal && r.transitions[0].value == 1. && r.transitions[0].derivative == 0.;
-            return true;
-        };
-        const int w0 = q0 >> 6, w1 = q1 >> 6;
-        const uint64_t b0 = 1ULL << (q0 & 63), b1 = stage.arity == 2 ? 1ULL << (q1 & 63) : 0;
-
-        // Pass 1: keep identity rows, rescale self-maps in place, and move
-        // every other term out of the table.
-        pending_keys.clear();
-        pending_coefs.clear();
-        pending_rows.clear();
-        for (size_t s = 0; s < terms.capacity(); ++s) {
-            const uint8_t st = terms.state[s];
-            if (st != Table::LIVE && st != Table::CHANGED) continue;
-            const uint64_t* k = &terms.keys[s * KW];
-            int row = ((k[w0] & b0) ? 1 : 0) + ((k[W + w0] & b0) ? 2 : 0);
-            if (stage.arity == 2)
-                row += (((k[w1] & b1) ? 1 : 0) + ((k[W + w1] & b1) ? 2 : 0)) << 2;
-            Row& r = rows[row];
-            if (r.size < 0 && !build(row)) { result.code = -2; return; }
-            if (r.identity) continue;
-            double* c = &terms.coefs[s * terms.stride];
-            if (r.diagonal) {
-                Transition const& t = r.transitions[0];
-                const double c0 = c[0];
-                for (int j = 0; j < noutputs; ++j) c[j] *= t.value;
-                if (tangent) c[stage.param + 1] += t.derivative * c0;
-                terms.state[s] = Table::CHANGED;
-                continue;
-            }
-            if (r.size > 0) {
-                pending_keys.insert(pending_keys.end(), k, k + KW);
-                pending_coefs.insert(pending_coefs.end(), c, c + noutputs);
-                pending_rows.push_back(static_cast<uint8_t>(row));
-            }
-            terms.erase(s);
-        }
-
-        // Pass 2: merge every moved term's images. Exceeding the hard cap
-        // always fails; it never silently truncates terms.
-        for (size_t p = 0; p < pending_rows.size(); ++p) {
-            Row const& r = rows[pending_rows[p]];
-            const double* source = &pending_coefs[p * noutputs];
-            for (int i = 0; i < r.size; ++i) {
-                Transition const& t = r.transitions[i];
-                std::copy_n(&pending_keys[p * KW], KW, key.begin());
-                key[w0] = (key[w0] & ~b0) | ((t.label & 1) ? b0 : 0);
-                key[W + w0] = (key[W + w0] & ~b0) | ((t.label & 2) ? b0 : 0);
-                if (stage.arity == 2) {
-                    key[w1] = (key[w1] & ~b1) | ((t.label & 4) ? b1 : 0);
-                    key[W + w1] = (key[W + w1] & ~b1) | ((t.label & 8) ? b1 : 0);
-                }
-                const size_t slot = terms.find_or_insert(key.data(), rq.max_terms);
-                if (slot == SIZE_MAX) { result.code = -1; return; }
-                double* destination = &terms.coefs[slot * terms.stride];
-                for (int j = 0; j < noutputs; ++j) destination[j] += t.value * source[j];
-                if (tangent) destination[stage.param + 1] += t.derivative * source[0];
-                terms.state[slot] = Table::CHANGED;
-            }
-        }
-        if (!filter(step)) { result.code = -2; return; }
-        result.peak_terms = std::max<uint64_t>(result.peak_terms, terms.size);
-    }
+    if (!propagate_layers<W, WithGradient>(rq, terms, filter, discard, result)) return;
     // All declared wires have already been contracted, including circuits
     // with no stages. Retain the overlap check as a defensive invariant.
     for (size_t s = 0; s < terms.capacity(); ++s) {
@@ -1069,4 +1361,28 @@ PAULI_API int pauli_graph_evaluate(
 
 PAULI_API void pauli_graph_free(void* handle) {
     delete static_cast<GraphSet*>(handle);
+}
+
+// Rebind every parameterised single-wire rotation for a new shift vector.
+// Rotation r about the axis that mixes Pauli labels first[r] and second[r]
+// has angle base + scale * shifts[param]; it writes four entries of its
+// 4x4 transfer matrix and of their derivatives with respect to the shift.
+PAULI_API void pauli_bind_rotations(CStage* stages, int nrotations, const int32_t* stage, const int32_t* first,
+                                    const int32_t* second, const int32_t* param, const double* base,
+                                    const double* scale, const double* sign, const double* shifts) {
+    for (int r = 0; r < nrotations; ++r) {
+        const double theta = base[r] + scale[r] * shifts[param[r]];
+        const double c = std::cos(theta), s = std::sin(theta);
+        const int a = first[r], b = second[r];
+        double* t = stages[stage[r]].ptm;
+        double* d = stages[stage[r]].dptm;
+        t[a * 5] = c;
+        t[b * 5] = c;
+        t[a * 4 + b] = sign[r] * s;
+        t[b * 4 + a] = -sign[r] * s;
+        d[a * 5] = -scale[r] * s;
+        d[b * 5] = -scale[r] * s;
+        d[a * 4 + b] = sign[r] * scale[r] * c;
+        d[b * 4 + a] = -sign[r] * scale[r] * c;
+    }
 }

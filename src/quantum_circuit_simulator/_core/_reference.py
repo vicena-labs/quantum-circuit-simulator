@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Sequence
+import copy
 import math
 import numpy as np
 
@@ -187,8 +188,19 @@ class NoisyPauliCircuit:
             raise ValueError('invalid PTM derivative')
         if param!=-1 and not 0<=param<self.nparams:raise ValueError('invalid parameter')
         if not math.isfinite(scale) or (param!=-1 and scale==0.):raise ValueError('invalid parameter scale')
-        self.stages.append(Stage(wires,matrix,derivative*scale,param,name,angle,phi,float(scale),data))
+        # Stages own read-only matrices, so circuits and their snapshots can
+        # share them without copying.
+        if matrix.flags.writeable:
+            matrix=matrix.copy();matrix.flags.writeable=False
+        derivative=derivative*scale;derivative.flags.writeable=False
+        self.stages.append(Stage(wires,matrix,derivative,param,name,angle,phi,float(scale),data))
         return self
+
+    def snapshot(self):
+        """An independent copy that shares the immutable stages."""
+        out=copy.copy(self)
+        out.stages=list(self.stages);out.readout=dict(self.readout)
+        return out
 
     def gate(self,name:str,wires:Sequence[int],theta:float=0.,param:int=-1,scale:float=1.):
         name=name.upper();wires=tuple(wires)
