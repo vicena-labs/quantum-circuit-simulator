@@ -78,8 +78,10 @@ def fsim(theta: float, phi: float) -> tuple[np.ndarray,np.ndarray,np.ndarray]:
 
 @lru_cache(maxsize=2048)
 def cached_gate_ptm(name:str,theta:float,parametric:bool):
-    if name in GATE1: return transfer(GATE1[name])
-    if name in GATE2: return transfer(GATE2[name])
+    if name in GATE1 or name in GATE2:
+        matrix, derivative = transfer(GATE1[name] if name in GATE1 else GATE2[name])
+        matrix.flags.writeable = derivative.flags.writeable = False
+        return matrix, derivative
     if name == 'RZZ':
         u, du = rzz(theta)
         matrix, derivative = transfer(u, du if parametric else None)
@@ -174,10 +176,17 @@ class NoisyPauliCircuit:
         self.stages:list[Stage]=[]
         self.readout:dict[int,tuple[float,float]]={}
 
-    def _stage(self,wires,matrix,derivative=None,param=-1,name='',angle=None,phi=None,scale=1.,data=()):
+    def _stage(self,wires,matrix,derivative=None,param=-1,name='',angle=None,phi=None,scale=1.,data=(),trusted=False):
         wires=tuple(wires)
         if not 1<=len(wires)<=2 or len(set(wires))!=len(wires) or any(not 0<=w<self.nqubits for w in wires):
             raise ValueError('invalid wires')
+        if trusted and not matrix.flags.writeable and not derivative.flags.writeable:
+            if param!=-1 and not 0<=param<self.nparams:raise ValueError('invalid parameter')
+            if not math.isfinite(scale) or (param!=-1 and scale==0.):raise ValueError('invalid parameter scale')
+            if scale!=1.:
+                derivative=derivative*scale;derivative.flags.writeable=False
+            self.stages.append(Stage(wires,matrix,derivative,param,name,angle,phi,float(scale),data))
+            return self
         d=4**len(wires)
         matrix=np.asarray(matrix,dtype=float)
         if matrix.shape!=(d,d) or not np.all(np.isfinite(matrix)):
@@ -204,21 +213,16 @@ class NoisyPauliCircuit:
 
     def gate(self,name:str,wires:Sequence[int],theta:float=0.,param:int=-1,scale:float=1.):
         name=name.upper();wires=tuple(wires)
-        if name in GATE1 and len(wires)==1 and param==-1:
-            U=GATE1[name];dU=None
-        elif name in GATE2 and len(wires)==2 and param==-1:
-            U=GATE2[name];dU=None
-        elif name in ('RX','RY','RZ') and len(wires)==1:
-            U,dU=rotation(name[1],theta)
-        elif name=='FSIM' and len(wires)==2:
-            U,dU,_=fsim(theta,0.)
-        elif name=='RZZ' and len(wires)==2:
-            U,dU=rzz(theta)
-        else:
+        if not ((name in GATE1 and len(wires)==1 and param==-1) or (name in GATE2 and len(wires)==2 and param==-1)
+                or (name in ('RX','RY','RZ') and len(wires)==1) or (name in ('FSIM','RZZ') and len(wires)==2)):
             raise ValueError(f'unsupported gate {name} or wires/parameter')
+        if not math.isfinite(theta):
+            raise ValueError('invalid PTM')
         t,d=cached_gate_ptm(name,theta,param!=-1)
         # Fixed rotations keep their angle too, so a circuit can be read back.
-        return self._stage(wires,t,d,param,name,theta if name in ('RX','RY','RZ','RZZ','FSIM') else None,scale=scale)
+        # The cached transfer matrices are finite and read-only already.
+        return self._stage(wires,t,d,param,name,theta if name in ('RX','RY','RZ','RZZ','FSIM') else None,scale=scale,
+                           trusted=True)
 
     def unitary(self,wires:Sequence[int],matrix):
         """A fixed one- or two-qubit unitary; wire a is the least significant bit."""

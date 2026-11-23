@@ -49,6 +49,15 @@ def worker(name, coeff, weight, threads):
         for s in vecs[1 + reps:]:
             t = time.perf_counter(); plan.evaluate(s); ts.append(time.perf_counter() - t)
         rec["warm_grad_s"] = statistics.median(ts)
+        t = time.perf_counter()
+        c = Circuit(w["n"], w["nparams"], max_terms=1_000_000)
+        for op in w["ops"]:
+            if op[0] in ("RX", "RY", "RZ"): c.gate(op[0], [op[1]], theta=op[2], param=op[3])
+            elif op[0] == "CZ": c.gate("CZ", [op[1], op[2]])
+            else: c.depolarize(list(op[1]), op[2])
+        c.prepare(w["obs"], truncation=Truncation(coeff / norm, None if weight == "Inf" else int(weight)),
+                  threads=threads, backend=backend, graph_max_nodes=10_000_000, graph_max_edges=50_000_000)
+        rec["rebuild_s"] = time.perf_counter() - t
         d = plan.diagnostics
         rec.update(peak_terms=d.get("max_single_cone_terms"), truncated_terms=d.get("truncated_terms"),
                    cone_groups=d.get("cone_groups") or d.get("unique_cone_groups"))

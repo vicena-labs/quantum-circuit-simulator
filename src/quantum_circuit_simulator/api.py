@@ -20,6 +20,8 @@ MAX_OBSERVABLE_TERMS = 65536
 
 
 def _integer(value, name, lo, hi):
+    if type(value) is int and lo <= value <= hi:
+        return value
     if isinstance(value, bool) or not isinstance(value, numbers.Integral) or not lo <= int(value) <= hi:
         raise ValueError(f"{name} must be an integer in [{lo}, {hi}]")
     return int(value)
@@ -456,7 +458,21 @@ class Prepared:
 
     def evaluate_value(self, shifts: Sequence[float] | None = None) -> float:
         """Evaluate a rebound parameter vector without propagating derivatives."""
-        return self.evaluate(shifts, gradients=False).value
+        values = self._shifts(shifts)
+        # An exact compiled graph needs no diagnostics or bounds per call, so
+        # its value skips that bookkeeping, which otherwise costs more than
+        # the arithmetic on small circuits.
+        if self._truncation is None and self.backend in ('graph', 'wide-graph') and self._plan is not None:
+            if not self._lock.acquire(blocking=False):
+                raise RuntimeError("a prepared circuit cannot be evaluated concurrently")
+            try:
+                value = self._plan.value(values)
+            finally:
+                self._lock.release()
+            if not math.isfinite(value):
+                raise ArithmeticError("nonfinite result; no successful output returned")
+            return value
+        return self.evaluate(values, gradients=False).value
 
     def evaluate_values(self, parameter_vectors) -> list[float]:
         return [result.value for result in self.evaluate_many(parameter_vectors, gradients=False)]

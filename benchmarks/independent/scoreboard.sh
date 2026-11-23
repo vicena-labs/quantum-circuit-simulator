@@ -5,7 +5,8 @@
 #   benchmarks/independent/scoreboard.sh <out-dir> [threads] [workload ...]
 #
 # Needs Python with this checkout installed (`pip install .`) and qiskit,
-# qiskit-aer, qulacs, pennylane, quimb and pauli-prop (requirements-scoreboard.txt),
+# qiskit-aer, qulacs, pennylane, quimb, pauli-prop and numba
+# (requirements-scoreboard.txt), git for sparse Pauli dynamics (spd),
 # and Julia 1.10 or later; a PauliPropagation.jl environment is created in
 # <out-dir>/julia-env on first use. PYTHON overrides the interpreter. Every run
 # is a fresh process with a BENCH_TIMEOUT-second limit (default 120). The
@@ -62,6 +63,13 @@ json.dump(dict(cpu=cpu, logical_cpus=cpus, memory_gib=round(mem, 1), system=plat
 print(json.dumps(versions))
 EOF
 command -v julia >/dev/null || { echo "Julia is not installed (https://julialang.org/install)"; exit 1; }
+# Sparse Pauli dynamics is a research repository, not a package: pin the
+# commit these adapters were checked against.
+SPD_COMMIT=f694c9c
+if [ ! -d "$OUT/spd" ]; then git clone -q https://github.com/tbegusic/spd.git "$OUT/spd"; fi
+git -C "$OUT/spd" checkout -q "$SPD_COMMIT"
+export SPD_PATH="$OUT/spd"
+"$PY" -I -c "import json, sys; m = json.load(open(sys.argv[1])); m['versions']['spd'] = 'git ' + sys.argv[2]; json.dump(m, open(sys.argv[1], 'w'), indent=1)" "$OUT/machine.json" "$SPD_COMMIT"
 if [ ! -f "$OUT/julia-env/Manifest.toml" ]; then
     julia --project="$OUT/julia-env" -e 'using Pkg; Pkg.add(["PauliPropagation", "JSON3"])'
 fi
@@ -86,8 +94,8 @@ for parts in whole cone split; do
         "$THREADS" 1e-12 Inf "${WORKLOADS[@]}"
 done
 for parts in "" cone split; do
-    echo "== pauli-prop, Qulacs, Aer, Lightning, quimb, ${parts:-whole} circuits"
-    BENCH_CONES=$parts BENCH_PP_ATOL=1e-12 BENCH_TOOLS=pauli_prop,qulacs,aer,lightning,quimb \
+    echo "== pauli-prop, spd, Qulacs, Aer, Lightning, quimb, ${parts:-whole} circuits"
+    BENCH_CONES=$parts BENCH_PP_ATOL=1e-12 BENCH_TOOLS=pauli_prop,spd,qulacs,aer,lightning,quimb \
         "$PY" -I bench.py run "$OUT/others.jsonl" "${WORKLOADS[@]}"
 done
 "$PY" -I summarize_scoreboard.py "$OUT" > "$OUT/scoreboard.md"

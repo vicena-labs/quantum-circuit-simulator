@@ -13,7 +13,7 @@ from collections import defaultdict
 
 OUT = sys.argv[1]
 TARGET = 10.0
-NAMES = {"pauli_prop": "pauli-prop", "qulacs": "Qulacs", "aer": "Aer", "lightning": "Lightning", "quimb": "quimb",
+NAMES = {"pauli_prop": "pauli-prop", "spd": "spd", "qulacs": "Qulacs", "aer": "Aer", "lightning": "Lightning", "quimb": "quimb",
          "PauliPropagation.jl tuned": "PauliPropagation.jl"}
 
 
@@ -30,13 +30,11 @@ def ok(r, key):
 
 def single(r, tool):
     """Setup of this circuit plus one typical evaluation. Once-per-process
-    costs (imports, Julia's compilation) are left out: PauliPropagation.jl's
-    setup is its second build of the same circuit."""
-    if not ok(r, "warm_value_s"):
+    costs (imports, library loading, Julia's compilation) are left out: every
+    tool's setup is a second setup of the same circuit in the same process."""
+    if not ok(r, "warm_value_s") or r.get("rebuild_s") is None:
         return None
-    if tool == "PauliPropagation.jl":
-        return None if r.get("rebuild_s") is None else r["rebuild_s"] + r["warm_value_s"]
-    return (r.get("build_s") or 0.) + (r.get("prepare_s") or 0.) + r["warm_value_s"]
+    return r["rebuild_s"] + r["warm_value_s"]
 
 
 def f(x):
@@ -96,7 +94,8 @@ print(f"{machine['threads']} thread(s) per tool; {machine['system']}; Python {ma
       + ", ".join(f"{k} {x}" for k, x in v.items()) + ".\n")
 print("Each figure is the median of 5 fresh parameter vectors in one fresh process with a time limit. Other tools run "
       "as their authors recommend: PauliPropagation.jl with `VectorPauliSum`, its `Performance` kernels and "
-      "`min_abs_coeff = 1e-12`; pauli-prop with `atol = 1e-12`. Every other tool also runs on circuits cut to the "
+      "`min_abs_coeff = 1e-12`; pauli-prop with `atol = 1e-12`; sparse Pauli dynamics (spd) with its "
+      "Clifford parts moved into the Pauli frame once, commuting rotations merged and threshold 1e-12. Every other tool also runs on circuits cut to the "
       "observable's light cone, as one circuit (cone) or one per observable term (split), and counts its fastest "
       "setup. Quantum Circuit Simulator (QCS) runs uncut circuits, exactly and at the same 1e-12 threshold. "
       f"Ratios below {TARGET:.0f}× are in bold. *Repeated* is one more evaluation of a prepared circuit, as in an "

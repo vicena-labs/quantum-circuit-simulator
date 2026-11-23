@@ -263,6 +263,11 @@ class GraphPrepared(ConeGroups):
         self.full.bind(shifts)
         return self
 
+    def value(self, shifts):
+        """The value at validated shifts, for an exact graph."""
+        self.bind(shifts)
+        return self._run(False)[0]
+
     def evaluate(self, *, with_gradients=True, include_stats=False):
         value, gradient, bounds = self._run(with_gradients)
         if self._outgrown(bounds[0]):

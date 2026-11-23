@@ -201,7 +201,7 @@ def eligible(w, tool):
         return n <= (10 if noisy else 26)
     if tool == "lightning":
         return not noisy and n <= 26
-    if tool == "quimb":
+    if tool in ("quimb", "spd"):
         return not noisy
     if tool == "pauli_cones_graph":
         return n <= 256 or bool(os.environ.get("BENCH_GRAPH_WIDE"))
@@ -422,6 +422,91 @@ class PauliProp:
         raise NotImplementedError("pauli-prop has no gradient API; parameter shift not timed")
 
 
+class Spd:
+    """Sparse Pauli dynamics (Begusic, Gray and Chan, Sci. Adv. 10, eadk4321
+    (2024); github.com/tbegusic/spd, on SPD_PATH) as in its IBM example:
+    Clifford parts of every rotation are moved into the Pauli frame once,
+    then each evaluation propagates only the remaining rotations. A CZ is the
+    rotations exp(-i pi/4 Z_a), exp(-i pi/4 Z_b) and exp(+i pi/4 Z_a Z_b) up to
+    a global phase. Noise channels are unsupported. BENCH_PP_ATOL sets its
+    coefficient threshold."""
+    def __init__(self, w):
+        if w["noisy"]:
+            raise NotImplementedError("spd has no noise channels")
+        sys.path.insert(0, os.environ["SPD_PATH"])
+        from qiskit.quantum_info import PauliList
+        from spd.OperatorSequence import OperatorSequence
+        from spd.SparsePauliDynamics import Simulation
+        t = time.perf_counter()
+        n = w["n"]
+        self.w, self.Simulation = w, Simulation
+
+        def label(paulis):
+            chars = ["I"] * n
+            for q, a in paulis.items():
+                chars[n - 1 - q] = a
+            return "".join(chars)
+
+        # (Pauli, base coefficient, parameter): exp(-i c P), c = theta / 2.
+        rotations = []
+        for op in w["ops"]:
+            if op[0] in ("RX", "RY", "RZ"):
+                rotations.append((label({op[1]: op[0][1]}), op[2] / 2, op[3]))
+            elif op[0] == "CZ":
+                a, b = op[1], op[2]
+                rotations += [(label({a: "Z"}), math.pi / 4, -1), (label({b: "Z"}), math.pi / 4, -1),
+                              (label({a: "Z", b: "Z"}), -math.pi / 4, -1)]
+        rotations.reverse()  # spd applies the first operator to the observable first
+        # Levels of mutually commuting rotations: one-wire rotations on distinct
+        # wires, or diagonal (Z-only) rotations.
+        levels, level, wires, diagonal = [], [], set(), True
+        for r in rotations:
+            support = {n - 1 - i for i, c in enumerate(r[0]) if c != "I"}
+            z = set(r[0]) <= {"I", "Z"}
+            if level and not ((diagonal and z) or not (support & wires)):
+                levels.append(level); level, wires, diagonal = [], set(), True
+            level.append(r); wires |= support; diagonal = diagonal and z
+        levels.append(level)
+        # Within a level every rotation commutes, so fixed rotations about the
+        # same Pauli add up; in the kicked Ising the one-wire Z parts of the CZs
+        # and the RZ gates cancel, leaving one ZZ rotation per coupler.
+        merged = []
+        for lv in levels:
+            fixed, out = {}, []
+            for r in lv:
+                if r[2] >= 0:
+                    out.append(r)
+                else:
+                    fixed[r[0]] = fixed.get(r[0], 0.) + r[1]
+            out += [(pauli, c, -1) for pauli, c in fixed.items() if abs(c) > 1e-15]
+            if out:
+                merged.append(out)
+        levels = merged or [[("I" * n, 0., -1)]]
+        self.build = time.perf_counter() - t
+        t = time.perf_counter()
+        seq = OperatorSequence([PauliList([r[0] for r in lv]) for lv in levels],
+                               [[r[1] for r in lv] for lv in levels])
+        seq.reduce_clifford()
+        keep = [(k, j) for k, lv in enumerate(levels) for j, r in enumerate(lv) if r[2] >= 0 or seq.coeffs[k][j] != 0.]
+        self.ops = PauliList([seq.ops[k][j] for k, j in keep]) if keep else None
+        self.residual = np.array([seq.coeffs[k][j] for k, j in keep], dtype=float)
+        self.param = np.array([levels[k][j][2] for k, j in keep], dtype=int)
+        self.obs = seq.clifford_ops.apply_to_PauliList(PauliList([label(p) for _, p in w["obs"]]))
+        self.obs_coeffs = np.array([c for c, _ in w["obs"]], dtype=float)
+        self.threshold = float(os.environ.get("BENCH_PP_ATOL", "0"))
+        self.prepare = time.perf_counter() - t
+
+    def value(self, s):
+        from qiskit.quantum_info import SparsePauliOp
+        shift = np.where(self.param >= 0, np.asarray(list(s) + [0.], dtype=float)[self.param] / 2, 0.)
+        observable = SparsePauliOp(self.obs, self.obs_coeffs)
+        ops = SparsePauliOp(self.ops, self.residual + shift) if self.ops is not None else SparsePauliOp(["I" * self.w["n"]], [0.])
+        return float(np.real(self.Simulation.from_pauli_list(observable, ops, threshold=self.threshold).run_circuit()))
+
+    def grad(self, s):
+        raise NotImplementedError("spd has no gradient")
+
+
 class Quimb:
     def __init__(self, w):
         import quimb.tensor as qtn
@@ -462,7 +547,8 @@ def make(tool, w):
         return Parts(tool, cone_parts(w, CONES))
     if tool == "pauli_cones": return PauliCones(w)
     if tool == "pauli_cones_graph": return PauliCones(w, "graph")
-    a = {"qulacs": Qulacs, "aer": Aer, "lightning": Lightning, "pauli_prop": PauliProp, "quimb": Quimb}[tool](w)
+    a = {"qulacs": Qulacs, "aer": Aer, "lightning": Lightning, "pauli_prop": PauliProp, "quimb": Quimb,
+         "spd": Spd}[tool](w)
     if tool == "pauli_prop":
         _fit_pauli_prop(a)
     return a
@@ -516,6 +602,9 @@ def worker(wname, tool):
             rec["grad_unsupported"] = str(e)
         if hasattr(a, "plan"):
             rec["diagnostics"] = {k: v for k, v in a.plan.diagnostics.items() if isinstance(v, (int, float, str))}
+        # Setting the same circuit up again times one more circuit's setup
+        # without once-per-process costs such as imports and library loading.
+        t = time.perf_counter(); make(tool, w); rec["rebuild_s"] = time.perf_counter() - t
     except Exception as e:
         rec["error"] = f"{type(e).__name__}: {str(e)[:200]}"
     rec["peak_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6

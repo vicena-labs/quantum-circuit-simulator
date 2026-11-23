@@ -4,3 +4,4 @@ qulacs
 pennylane
 quimb
 pauli-prop
+numba
