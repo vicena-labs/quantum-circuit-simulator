@@ -4,8 +4,8 @@
 #
 #   benchmarks/independent/scoreboard.sh <out-dir> [threads] [workload ...]
 #
-# Needs Python with quantum-circuit-simulator, qiskit, qiskit-aer, qulacs,
-# pennylane, quimb and pauli-prop (`pip install -r requirements-scoreboard.txt`),
+# Needs Python with this checkout installed (`pip install .`) and qiskit,
+# qiskit-aer, qulacs, pennylane, quimb and pauli-prop (requirements-scoreboard.txt),
 # and Julia 1.10 or later; a PauliPropagation.jl environment is created in
 # <out-dir>/julia-env on first use. PYTHON overrides the interpreter. Every run
 # is a fresh process with a BENCH_TIMEOUT-second limit (default 120). The

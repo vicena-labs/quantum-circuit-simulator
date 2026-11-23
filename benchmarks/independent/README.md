@@ -3,7 +3,7 @@
 **The scoreboard** is the comparison we publish from. One command runs every tool on one machine, each the way its authors recommend, and writes a table that marks every workload where Quantum Circuit Simulator is less than ten times faster than the fastest alternative:
 
 ```bash
-pip install -r benchmarks/independent/requirements-scoreboard.txt   # plus Julia 1.10 or later
+pip install . -r benchmarks/independent/requirements-scoreboard.txt  # this checkout, the other tools; plus Julia 1.10 or later
 benchmarks/independent/scoreboard.sh results/scoreboard-1t 1          # one thread per tool
 benchmarks/independent/scoreboard.sh results/scoreboard-all 16             # every core of a 16-CPU machine
 ```
