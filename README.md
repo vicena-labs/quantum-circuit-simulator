@@ -60,22 +60,40 @@ Supported operations include H, SX, X/Y/Z, RX/RY/RZ, CZ, ECR, fSim (theta deriva
 
 ## How fast it is
 
-Two comparisons against the leading CPU simulators, on two machines. An earlier version on a Linux virtual machine (Intel Xeon Platinum 8573C, 19 November 2026) was 3–9 times faster than Qulacs and IBM pauli-prop on small noisy circuits ([record](benchmarks/results/README.md)). The larger comparison below used version 0.4.0 on an Apple M1 Pro laptop on 20 November 2026. Quantum Circuit Simulator ran on one thread; each other tool got the faster of one and eight threads. Every exact result agreed with every other to 4e-13. The other tools were [PauliPropagation.jl](https://github.com/MSRudolph/PauliPropagation.jl), [IBM pauli-prop](https://github.com/Qiskit/pauli-prop), [Qiskit Aer](https://github.com/Qiskit/qiskit-aer), [Qulacs](https://github.com/qulacs/qulacs), [PennyLane Lightning](https://github.com/PennyLaneAI/pennylane-lightning) and [quimb](https://github.com/jcmgray/quimb).
+A quantum computer's output can be checked on an ordinary computer by simulating the same circuit. We timed this package against **seven other open-source simulators on 26 circuits**, from 10 to 1,024 qubits, on one Vicena computer (an AMD EPYC server, 23–24 November 2026). Each simulator was set up the way its own authors recommend, and also given circuits trimmed to the part that affects the answer; its fastest setup counts. On **14 of the 26 circuits this package is at least 10 times faster** than the fastest of the seven; on 3, including IBM's 127-qubit utility experiment, it is the only one that finished within two minutes; on 4 deep circuits it refuses and others finish.
 
-| Workload, exact | Native backend, one evaluation | Graph backend, each further evaluation | Fastest other tool |
-| --- | ---: | ---: | --- |
-| Noisy circuits, 10–36 qubits | 5–35× faster | 53–225× faster | pauli-prop or PauliPropagation.jl, 2–9 ms |
-| Noisy circuits, 400–1,024 qubits | 70–270× faster | 3,800–12,000× faster | 0.5–4.2 s |
-| Noiseless, 20 qubits, 4 layers | 5× faster | 455× faster | Aer, 157 ms |
-| Noiseless, 12–20 qubits, 2 layers | 0.6× (slower) | 1.7–3.2× faster | PauliPropagation.jl surrogate, 0.05–0.1 ms |
-| IBM's 127-qubit kicked Ising, 5 steps | 0.07–5.7 s | — | none finished within 120 s |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/speed-dark.png">
+  <img alt="Time per evaluation on a log scale for ten circuits: Quantum Circuit Simulator against the fastest of seven other simulators. It is 16 to 22,000 times faster on eight of them, the only one to finish IBM's 127-qubit experiment at a general angle, 4 to 6 times faster on two small circuits, and refuses a 100-qubit, 8-layer circuit that quimb solves in 1.8 seconds" src="docs/images/speed-light.png">
+</picture>
 
-- **Gradients:** every shared-parameter gradient comes from one reverse pass, 82–2,180× faster than the other tools' parameter-shift gradients on noiseless circuits. No other tool tested returned gradients through T1/T2 noise.
-- **Truncated:** on the 127-qubit kicked Ising at a 1e-4 threshold, the graph takes 1.3–12 ms against 0.19–1.5 s for PauliPropagation.jl and 0.4–6 s for pauli-prop, with 4–15 times smaller errors.
-- **Where it loses:** exact mode refuses circuits of 6–8 layers and the 20-step kicked Ising, which quimb (0.19–2.2 s) and Aer (6.5 s) solve. At a 1e-5 truncation threshold PauliPropagation.jl finished several circuits that exceeded our term cap.
-- **Why it is fast:** each observable touches only its backward light cone, and a wire is contracted into the input state as soon as propagation passes it; observables with overlapping cones are propagated together; the C++ kernel rewrites only the terms a gate changes; and the graph backend compiles the propagation once into flat arithmetic, so each new parameter vector is one pass forward and one back.
+**What it means in practice:**
 
-**These figures are preliminary.** Neither machine was a quiet, dedicated benchmark host: the virtual machine shared its CPU host, and the laptop was running other applications, so its single-thread figures vary by up to several times between runs. Graph timings exclude its one-off compilation (5–150 ms here), which repays itself after a few to a few tens of evaluations. GPU Pauli propagation, MPO and trajectory methods were not timed. [Performance](docs/performance.md) explains the method and the sources of the speed-ups, and [the full tables](benchmarks/independent/results-2026-11-20-laptop/v5_tables.md) keep every refusal and timeout.
+- **IBM's 127-qubit utility experiment** ([Kim et al., Nature 2023](https://doi.org/10.1038/s41586-023-06096-3)), five steps at a general angle: the exact value in 81 ms and every gradient in 92 ms. No other simulator finished in 120 s, with one thread or with sixteen.
+- **Noisy circuits of 400 and 1,024 qubits:** 0.15–0.35 ms per evaluation, 101–209 times faster on one thread and 198–273 times faster when every tool had 16 threads.
+- **Gradients:** every shared-parameter gradient in one reverse pass, 16–1,690 times faster where another tool returns gradients at all; none of the others returns gradients through noise.
+
+**The other simulators**, and how each ran:
+
+| Simulator | What it is | Set up as |
+| --- | --- | --- |
+| [PauliPropagation.jl](https://github.com/MSRudolph/PauliPropagation.jl) | Pauli propagation in Julia, from EPFL | `VectorPauliSum`, the `Performance` module's fused kernels, `min_abs_coeff = 1e-12` |
+| [IBM pauli-prop](https://github.com/Qiskit/pauli-prop) | IBM's Pauli propagation for Qiskit | `atol = 1e-12` |
+| [sparse Pauli dynamics](https://github.com/tbegusic/spd) (spd) | The code behind Begušić, Gray and Chan's classical simulation of IBM's experiment | Clifford parts moved into the Pauli frame once, commuting rotations merged, threshold 1e-12 |
+| [quimb](https://github.com/jcmgray/quimb) | Tensor networks, which follow entanglement instead of Pauli terms | `local_expectation` with automatic contraction paths |
+| [Qiskit Aer](https://github.com/Qiskit/qiskit-aer), [Qulacs](https://github.com/qulacs/qulacs), [PennyLane Lightning](https://github.com/PennyLaneAI/pennylane-lightning) | Full state-vector and density-matrix simulators, exact up to roughly 26 qubits, or 10 with noise | Their default fast paths; Lightning's adjoint gradients |
+
+Every simulator also ran on circuits cut to each observable's backward light cone and relabelled onto the fewest qubits, as one circuit or as one circuit per observable term. Quantum Circuit Simulator finds those light cones itself and ran the uncut circuits, exactly and at the same 1e-12 threshold. Each figure is the median of five fresh parameter vectors in a fresh process with a 120 s limit; times exclude one-off setup, which the [full tables](benchmarks/independent/results-2026-11-24-vicena/README.md) report separately.
+
+**Where it is not faster:**
+
+- **Two small circuits** gain less than tenfold: 6 times on 12 qubits and 4 times on one qubit's value in a 100-qubit circuit, where each call's fixed cost dominates.
+- **Deep circuits.** Exact mode refuses circuits of 6–8 layers at its million-term cap; quimb solves three of them in 0.2–1.8 s and Aer the 24-qubit one in 1–14 s. Two deep noisy circuits and IBM's 20-step circuit were finished by no tool.
+- **One-off evaluations of large circuits.** Including setup, the graph backend's compilation (100–300 ms on the 400- and 1,024-qubit grids) makes it between about as fast as PauliPropagation.jl and 1.8 times slower there; the native backend needs no compilation.
+
+**Why it is fast:** each observable touches only its backward light cone, and a wire is contracted into the input state as soon as propagation passes it; gates and noise on the same wires are merged, and each layer of gates is applied to a Pauli term in one pass; and the graph backend compiles the propagation once into flat arithmetic, so each new parameter vector is one pass forward and one back.
+
+**Reproduce it** with one command, `benchmarks/independent/scoreboard.sh <out-dir> <threads>`, which checks every tool's installation, records the machine and versions, and marks every circuit where this package is less than ten times faster. The first comparison ran PauliPropagation.jl with slower default settings; every tool now runs as its own documentation advises. We welcome corrections from any tool's authors. [Measured performance](docs/performance.md) explains the method, and [the raw records](benchmarks/independent/results-2026-11-24-vicena/README.md) keep every refusal and timeout.
 
 ## Install and run locally
 

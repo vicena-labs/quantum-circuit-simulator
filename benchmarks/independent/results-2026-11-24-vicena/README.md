@@ -7,7 +7,7 @@ The [scoreboard](../README.md) run once with one thread per tool and once with s
 | One thread per tool | [scoreboard-1t/scoreboard.md](scoreboard-1t/scoreboard.md) | `scoreboard-1t/*.jsonl` |
 | Sixteen threads per tool | [scoreboard-16t/scoreboard.md](scoreboard-16t/scoreboard.md) | `scoreboard-16t/*.jsonl` |
 
-`python summarize_scoreboard.py results-2026-11-24-vicena/scoreboard-1t` regenerates each table byte for byte from its records. The tables were produced by the summary of commit `1304e2d`, which counts a workload that Quantum Circuit Simulator refused and another tool finished as a loss.
+`python summarize_scoreboard.py results-2026-11-24-vicena/scoreboard-1t` regenerates each table byte for byte from its records. The records are as the computer wrote them (archive SHA-256 `a4a4f4da…d7ef`), except that each record's `python` field, the container's interpreter path, reads `python3.12 (scoreboard virtual environment)`, as in earlier results; no table uses it. The tables were produced by the summary of commit `1304e2d`, which counts a workload that Quantum Circuit Simulator refused and another tool finished as a loss.
 
 ## Caveats
 

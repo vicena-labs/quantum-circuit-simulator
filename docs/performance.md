@@ -2,25 +2,15 @@
 
 The architecture cleanup removes demonstrated work and adds alternate representations. It does not establish that Quantum Circuit Simulator is universally fastest. Use matched inputs, noise, requested outputs, tolerances and resource budgets when comparing it.
 
-## Preliminary comparison of 0.4.0
+## Comparison on a Vicena computer
 
-These figures come from the [independent harness](../benchmarks/independent/README.md) on one Apple M1 Pro laptop (6 performance and 2 efficiency cores) on 2026-11-20. Each figure is a warm median of 5 fresh parameter vectors, with a 120 s limit per run. **They are preliminary.** Background applications used about 1.5–2 of the 8 cores throughout, so single-thread figures vary by up to several times between runs, and the 8-thread figures are not reliable. [All tables](../benchmarks/independent/results-2026-11-20-laptop/v5_tables.md) keep every refusal and timeout. Every exact tool agreed with every other to 4e-13 wherever more than one finished.
+The [scoreboard](../benchmarks/independent/README.md) ran on a Vicena computer (AMD EPYC 7502P, 16-CPU quota, 32 GiB) on 23–24 November 2026, with the layer-fused kernel of commit `c5127f0`, once with one thread per tool and once with sixteen. Every other tool ran as its authors recommend and also on circuits cut to the light cone, and its fastest setup counts. [Both tables and every raw record](../benchmarks/independent/results-2026-11-24-vicena/README.md) keep every refusal and timeout; the README's [How fast it is](../README.md#how-fast-it-is) summarises them.
 
-**Exact values, Quantum Circuit Simulator on 1 thread against each competitor's faster of 1 and 8 threads:**
+Of 26 workloads, for one more evaluation of a prepared circuit: 14 at least ten times faster than the fastest other tool, 2 faster by less (4–7×, small circuits where per-call overhead dominates), 3 that only Quantum Circuit Simulator finished (IBM's 127-qubit kicked Ising at general angles, 81–86 ms exact), 4 deep circuits it refused and quimb or Aer solved, and 3 that no tool finished. Sixteen threads left its times almost unchanged, since each of these workloads is one cone group or many tiny ones, while Aer and quimb gained; the counts stayed the same.
 
-- **Small noiseless circuits (12–20 qubits, 2 layers):** the graph backend (0.03 ms) is 1.7–3.2× faster than PauliPropagation.jl's reusable surrogate, the fair comparison for repeated evaluation.
-- **Noiseless, 20 qubits, 4 layers:** 0.34 ms against Aer's 157 ms.
-- **Noisy circuits:** 53–225× faster than the fastest finishing tool on 10–36 qubits. On 400 and 1,024 qubits the graph takes 0.13–0.35 ms, against 0.5–4.2 s for pauli-prop or PauliPropagation.jl.
-- **127-qubit kicked Ising, 5 steps:** Quantum Circuit Simulator computes the exact magnetisation in 0.07–5.7 s per evaluation, and quimb, pauli-prop and PauliPropagation.jl did not finish within the limit.
-- **Where Quantum Circuit Simulator loses:** exact mode refuses the 6–8-layer circuits and the 20-step kicked-Ising circuit, while quimb (0.19–2.2 s) and Aer (6.5 s) solve some of them exactly.
+Including setup, it leads by ten times or more on only 4–5 workloads: graph compilation costs 100–300 ms on the 400- and 1,024-qubit grids, about one PauliPropagation.jl run there. The approximate-mode comparison against the tuned tools has not been rerun.
 
-**Truncation at the same coefficient threshold:** thresholds are absolute for the other tools and divided by the observable's l1 norm for Quantum Circuit Simulator, so all drop the same coefficients.
-
-- **127-qubit kicked Ising at 1e-4:** the truncated graph takes 1.3–12 ms, against 0.19–1.5 s for PauliPropagation.jl and 0.4–6 s for pauli-prop, with about 4–15 times smaller errors. It keeps a term while any derivative coefficient is large, which retains more of the answer.
-- **Noisy 36- and 100-qubit circuits at 1e-4:** the graph takes 11–16 ms, against 0.25–0.63 s for PauliPropagation.jl.
-- **At 1e-5,** several Quantum Circuit Simulator runs exceeded the term cap or the time limit, while PauliPropagation.jl finished in 5–16 s.
-
-**Threads:** they help only when a circuit splits into many independent cone groups, as on the 400- and 1,024-qubit noisy circuits (2.7–3.8× at 8 threads). All 127 kicked-Ising observables form one joint group, which a single thread evaluates.
+An earlier comparison of 0.4.0 on an Apple M1 Pro laptop (20 November 2026, [tables](../benchmarks/independent/results-2026-11-20-laptop/v5_tables.md)) ran PauliPropagation.jl with its slower default container, no coefficient threshold and uncut 1,024-qubit grids. Its leads of up to 12,000 times against that tool, and its truncated-mode comparison, are superseded.
 
 ## Reviewed source versus cleaned implementation
 

@@ -14,7 +14,7 @@ It checks that every tool is installed before it starts, records the machine and
 - **Like for like.** Quantum Circuit Simulator reports exact results and results at the same 1e-12 threshold, each with its error against the exact value.
 - **Two regimes.** *Repeated* times one more evaluation of a prepared circuit, as in an optimiser; *single* adds that circuit's setup, including our graph compilation and excluding once-per-process costs such as imports and Julia's compilation.
 
-These scripts compare Quantum Circuit Simulator with Qiskit Aer, Qulacs, PennyLane Lightning, IBM pauli-prop, quimb, PauliPropagation.jl and sparse Pauli dynamics on identical circuits, observables and parameter vectors. Each run is a fresh process with a time limit, and refusals and timeouts are recorded as results. [Preliminary results](results-2026-11-20-laptop/v5_tables.md) from an Apple M1 Pro laptop are summarised in [measured performance](../../docs/performance.md#preliminary-comparison-of-040), beside the earlier [CPU comparison](../results/README.md) on a Linux virtual machine.
+These scripts compare Quantum Circuit Simulator with Qiskit Aer, Qulacs, PennyLane Lightning, IBM pauli-prop, quimb, PauliPropagation.jl and sparse Pauli dynamics on identical circuits, observables and parameter vectors. Each run is a fresh process with a time limit, and refusals and timeouts are recorded as results. The current results are [the Vicena computer run](results-2026-11-24-vicena/README.md), summarised in [measured performance](../../docs/performance.md#comparison-on-a-vicena-computer); the earlier [laptop run](results-2026-11-20-laptop/v5_tables.md), which ran PauliPropagation.jl with its slower defaults, and the [CPU comparison](../results/README.md) on a Linux virtual machine are kept as history.
 
 | File | Purpose |
 | --- | --- |
@@ -22,6 +22,7 @@ These scripts compare Quantum Circuit Simulator with Qiskit Aer, Qulacs, PennyLa
 | `pp_bench.jl`, `run_pp.py` | PauliPropagation.jl: exact, truncated (`min_abs_coeff`, `max_weight`) or its reusable surrogate (`PP_MODE=surrogate`) |
 | `trunc_bench.py` | Quantum Circuit Simulator truncated mode (`BENCH_BACKEND=native` or `graph`), converting an absolute coefficient threshold to Quantum Circuit Simulator's relative one |
 | `scoreboard.sh`, `summarize_scoreboard.py` | The scoreboard: setup check, every run, and the tables |
+| `speed_chart.py` | The README's speed chart (`docs/images/speed-*.png`) and its data for the Vicena website, from a scoreboard run |
 | `isolated.py` | Runs each worker in its own process group, so a timeout or a stopped run kills the worker and everything it started |
 | `pp_tuned.jl` | PauliPropagation.jl as its authors recommend, on whole, cone or split circuits |
 | `summarize_v5.py` | Builds the 20 November tables from their raw JSONL files |

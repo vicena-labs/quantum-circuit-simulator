@@ -36,24 +36,22 @@ An improvement counts only when the full test suite passes, values agree with an
 
 ## Where we stand
 
-Measured on 23 November 2026 against PauliPropagation.jl 0.9.2 tuned as above; the [scoreboard](../benchmarks/independent/README.md) reproduces them. Already ten times ahead: noisy circuits from 10 to 1,024 qubits, noiseless circuits of four layers and the 127-qubit kicked Ising at general angles. Behind or short of 10×:
+Measured on a Vicena computer on 23–24 November 2026 with commit `c5127f0` ([results](../benchmarks/independent/results-2026-11-24-vicena/README.md)). For one more evaluation of a prepared circuit, 14 of 26 workloads are at least ten times ahead and 3 only we finish, including the 127-qubit kicked Ising at general angles. Short of the goal:
 
 | Gap | Cause |
 | --- | --- |
-| IBM 127-qubit circuit at angles 0 and π/2: 6× and 3.7× slower | At Clifford angles nothing branches, but exact mode carries rounding-noise terms (cos π/2 ≈ 6e-17) through every later gate |
-| Noiseless 12–20 qubits, 2 layers: 3–5× ahead | At 0.03 ms the cost is the Python call, not the simulation |
-| 100-qubit centre observable, 4 layers: 2.6× ahead | The competitor gains as much from the light cone as we do; our per-term cost has to fall |
-| Single evaluations | Graph compilation (5–150 ms) is charged to one evaluation |
-| 6–8 layers and the 20-step kicked Ising | Exact mode refuses at its term cap; approximate mode has not yet been compared with the tuned competitors |
+| 12-qubit circuit, 2 layers: 6× ahead; 100-qubit centre observable, 4 layers: 4× | The fixed cost of a call (about 19 µs on that server), not the simulation |
+| Single evaluations: ten times ahead on only 4–5 workloads | Graph compilation (100–300 ms on the large grids) and Python circuit building are charged to one evaluation |
+| 6–8 layers, and the 20-step kicked Ising | Exact mode refuses at its term cap; approximate mode has not yet been compared with the tuned competitors |
 
 ## Improvements, in order
 
 Each step is measured on the scoreboard before the next starts.
 
-1. **Layer-fused kernel.** Merge noise into the adjacent gates and process each layer of gates in one pass over the terms. Built on the `kernel-fusion` branch: 79–87× faster on the hard 127-qubit cases and 7–26× at the Clifford angles, with values identical to 1e-14.
+1. **Layer-fused kernel.** Done: noise merges into the adjacent gates and each layer of gates is applied in one pass, in exact and truncated mode; 25–174× faster on the 127-qubit kicked Ising, values identical to 1e-14.
 2. **Exact zeros stay zero.** Drop terms whose coefficient is below rounding error relative to the observable's norm when only the value is needed, and evaluate rotations at Clifford angles as the single Pauli map they are. Gradients keep the terms, whose derivatives are not zero.
-3. **One native call for many evaluations.** Evaluate a batch of parameter vectors in C++ without returning to Python between them, which removes the fixed per-call cost that dominates small circuits.
-4. **Cheaper preparation.** Cache compiled graphs by circuit structure and chip, and cut the Python conversion (about 0.3 s on the 127-qubit circuit, mostly `deepcopy` during import from QASM), so single evaluations win too.
+3. **One native call for many evaluations.** Partly done: parameters rebind in one native call and an exact graph's value skips per-call bookkeeping (about 30 µs to 11 µs on a laptop). Still to do: evaluate a batch of vectors in C++ without returning to Python.
+4. **Cheaper preparation.** Partly done: a prepared circuit no longer deep-copies its stages, and fixed gates reuse read-only matrices (building a 12-qubit circuit fell from 0.58 to 0.19 ms). Still to do: cache compiled graphs by circuit structure and chip, and skip the graph compile when it would fall back.
 5. **All cores.** Propagate independent light cones, and independent parameter vectors, on separate cores; compare against every competitor at its best thread count.
 6. **Approximate mode against tuned competitors.** Rerun the truncated comparison at matched error, and size the term cap from available memory so deep circuits run on the remote computers instead of being refused.
 7. **Deep noiseless circuits.** Where tensor networks (quimb) win, Pauli propagation alone may not reach 10×. The candidate is contracting each light cone as a tensor network when it is cheaper than propagating it. This is research, and the tables keep the loss until it is solved.

@@ -1,0 +1,109 @@
+{
+ "source": "scoreboard-1t of results-2026-11-24-vicena",
+ "cpu": "AMD EPYC 7502P 32-Core Processor",
+ "threads": 1,
+ "limit_s": 120.0,
+ "versions": {
+  "quantum-circuit-simulator": "0.5.0rc5",
+  "qiskit": "2.6.2",
+  "qiskit-aer": "0.18.4",
+  "qulacs": "0.6.14",
+  "pennylane": "0.45.1",
+  "pennylane-lightning": "0.45.0",
+  "quimb": "1.15.0",
+  "pauli-prop": "0.2.1",
+  "spd": "git f694c9c"
+ },
+ "rows": [
+  {
+   "workload": "K_eagle_mz_S5_t1pi8",
+   "name": "IBM's 127-qubit utility experiment",
+   "detail": "Kicked Ising, 5 steps, θh = π/8, exact",
+   "qcs_s": 0.081155925989151,
+   "other_s": null,
+   "other_tool": null,
+   "other_setup": null
+  },
+  {
+   "workload": "K_eagle_mz_S5_t4pi8",
+   "name": "Same experiment at θh = π/2",
+   "detail": "A Clifford angle, where Pauli tools do best",
+   "qcs_s": 0.008665338158607483,
+   "other_s": 0.1421968936920166,
+   "other_tool": "PauliPropagation.jl",
+   "other_setup": "split"
+  },
+  {
+   "workload": "B_noisy_6x6_L5",
+   "name": "Noisy circuit, 36 qubits, 5 layers",
+   "detail": "6 × 6 grid, two-qubit depolarizing noise",
+   "qcs_s": 0.0006305128335952759,
+   "other_s": 13.877916097640991,
+   "other_tool": "PauliPropagation.jl",
+   "other_setup": "cone"
+  },
+  {
+   "workload": "A_vqe_4x5_L4",
+   "name": "Noiseless circuit, 20 qubits, 4 layers",
+   "detail": "Ising energy on a 4 × 5 grid",
+   "qcs_s": 0.0004722476005554199,
+   "other_s": 0.42248833179473877,
+   "other_tool": "Lightning",
+   "other_setup": "cone"
+  },
+  {
+   "workload": "B_noisy_32x32_L3",
+   "name": "Noisy circuit, 1,024 qubits",
+   "detail": "32 × 32 grid, 3 layers, mean magnetisation",
+   "qcs_s": 0.00032085180282592773,
+   "other_s": 0.039112091064453125,
+   "other_tool": "PauliPropagation.jl",
+   "other_setup": "split"
+  },
+  {
+   "workload": "B_noisy_20x20_L3",
+   "name": "Noisy circuit, 400 qubits",
+   "detail": "20 × 20 grid, 3 layers",
+   "qcs_s": 0.00014601647853851318,
+   "other_s": 0.01478886604309082,
+   "other_tool": "PauliPropagation.jl",
+   "other_setup": "split"
+  },
+  {
+   "workload": "B_noisy_2x5_L4",
+   "name": "Noisy circuit, 10 qubits",
+   "detail": "2 × 5 grid, 4 layers",
+   "qcs_s": 2.7820467948913574e-05,
+   "other_s": 0.0003788471221923828,
+   "other_tool": "PauliPropagation.jl",
+   "other_setup": "whole"
+  },
+  {
+   "workload": "A_vqe_3x4_L2",
+   "name": "Small circuit, 12 qubits",
+   "detail": "2 layers; call overhead dominates",
+   "qcs_s": 1.9371509552001953e-05,
+   "other_s": 0.00011587142944335938,
+   "other_tool": "PauliPropagation.jl",
+   "other_setup": "whole"
+  },
+  {
+   "workload": "C_centre_10x10_L4",
+   "name": "One qubit's value, 100 qubits",
+   "detail": "4 layers, centre Z",
+   "qcs_s": 4.146993160247803e-05,
+   "other_s": 0.00017404556274414062,
+   "other_tool": "PauliPropagation.jl",
+   "other_setup": "cone"
+  },
+  {
+   "workload": "C_centre_10x10_L8",
+   "name": "One qubit's value, 100 qubits, 8 layers",
+   "detail": "Too deep for exact Pauli propagation",
+   "qcs_s": null,
+   "other_s": 1.8374632894992828,
+   "other_tool": "quimb",
+   "other_setup": "split"
+  }
+ ]
+}
