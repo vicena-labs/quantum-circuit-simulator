@@ -7,16 +7,19 @@
 # usage: julia --project=<env> -t <threads> pp_tuned.jl <workloads.json> <workload> <parts> <min_abs_coeff>
 # <parts> is `whole` (the full circuit), `cone` (one circuit for the union of
 # every term's light cone) or `split` (one circuit per observable term, summed);
-# bench.py export writes all three.
+# bench.py export writes all three. Each is timed in three variants, and the
+# fastest counts: `plain` (one allocating Performance.propagate per part),
+# `cache` (the notebook's pattern: a workspace sized up front and propagate!)
+# and `zones` (the same workspace split with MultiPauliSum across threads).
 using PauliPropagation, JSON3, Statistics
 using PauliPropagation.Performance
 const PB = PauliPropagation.PropagationBase
 
 const t_start = time()
-data = JSON3.read(read(ARGS[1], String))
-w = data[Symbol(ARGS[2])]
-mode = ARGS[3]
-tol = parse(Float64, ARGS[4])
+const data = JSON3.read(read(ARGS[1], String))
+const w = data[Symbol(ARGS[2])]
+const mode = ARGS[3]
+const tol = parse(Float64, ARGS[4])
 
 # Two-wire depolarizing, written as a custom gate: PauliPropagation.jl ships
 # only one-wire Pauli channels. It damps every Pauli that is non-identity on
@@ -36,7 +39,7 @@ PB.requiresmerging(::TwoQubitDepolarizing, ::PB.AbstractPropagationCache) = fals
 
 function build(p)
     n = Int(p.n)
-    circ = Any[]
+    circ = Gate[]  # concretely typed gates, so the propagation loop does not dispatch dynamically
     rot = Tuple{Float64,Int}[]          # (base angle, shared parameter) per rotation, in order
     for op in p.ops
         k = String(op[1])
@@ -60,10 +63,10 @@ function build(p)
         qs = [parse(Int, String(q)) + 1 for q in keys(o)]
         add!(psum, [Symbol(String(o[q])) for q in keys(o)], qs, Float64(c))
     end
-    return [g for g in circ], rot, VectorPauliSum(psum)
+    return circ, rot, VectorPauliSum(psum)
 end
 
-thetas(rot, s) = [b + (par >= 0 ? s[par + 1] : 0.0) for (b, par) in rot]
+thetas(rot, s) = Float64[b + (par >= 0 ? s[par + 1] : 0.0) for (b, par) in rot]
 
 function value(parts, s)
     v, nterms = 0.0, 0
@@ -72,6 +75,20 @@ function value(parts, s)
         v += overlapwithzero(out); nterms += length(out)
     end
     return v, nterms
+end
+
+# The advanced_performance notebook's pattern: one workspace sized to the
+# expected term count, propagated in place.
+function value_cached(parts, s, sizes, zones)
+    v = 0.0
+    for (i, (circ, rot, psum)) in enumerate(parts)
+        sum = zones ? MultiPauliSum(deepcopy(psum)) : deepcopy(psum)
+        cache = PropagationCache(sum)
+        resize!(cache, sizes[i])
+        Performance.propagate!(circ, cache, thetas(rot, s); min_abs_coeff=tol)
+        v += overlapwithzero(cache)
+    end
+    return v
 end
 
 function gradient(parts, s, nparams)
@@ -100,11 +117,23 @@ try
     t = time(); v, nterms = value(parts, vecs[1]); rec["first_value_s"] = time() - t
     rec["value"] = v; rec["final_terms"] = nterms
     rec["since_start_to_first_value_s"] = time() - t_start
-    ts = Float64[]
-    for s in vecs[2:1 + reps]
-        t = time(); value(parts, s); push!(ts, time() - t)
+    sizes = [max(16, 2 * length(Performance.propagate(c, p, thetas(r, vecs[1]); min_abs_coeff=tol))) for (c, r, p) in parts]
+    variants = [("plain", s -> value(parts, s)), ("cache", s -> value_cached(parts, s, sizes, false)),
+                ("zones", s -> value_cached(parts, s, sizes, true))]
+    best = nothing
+    for (name, run) in variants
+        run(vecs[1])  # compile this variant before timing it
+        ts = Float64[]
+        for s in vecs[2:1 + reps]
+            t = time(); run(s); push!(ts, time() - t)
+        end
+        m = median(ts)
+        rec["warm_value_s_$name"] = m
+        if best === nothing || m < best[1]
+            best = (m, name, ts)
+        end
     end
-    rec["warm_value_s"] = median(ts); rec["warm_value_samples"] = ts
+    rec["warm_value_s"] = best[1]; rec["variant"] = best[2]; rec["warm_value_samples"] = best[3]
     # Building again, now compiled, times the setup of one more circuit.
     t = time(); [build(p) for p in raw]; rec["rebuild_s"] = time() - t
     if !w.noisy

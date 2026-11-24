@@ -113,7 +113,8 @@ def main(out):
           + ", ".join(f"{k} {x}" for k, x in v.items()) + ".\n")
     print("Each figure is the median of 5 fresh parameter vectors in one fresh process with a time limit. Other tools run "
           "as their authors recommend: PauliPropagation.jl with `VectorPauliSum`, its `Performance` kernels and "
-          "`min_abs_coeff = 1e-12`; pauli-prop with `atol = 1e-12`; sparse Pauli dynamics (spd) with its "
+          "`min_abs_coeff = 1e-12`, in the fastest of a plain call, a workspace sized up front and `MultiPauliSum` "
+          "zones; pauli-prop with `atol = 1e-12`; sparse Pauli dynamics (spd) with its "
           "Clifford parts moved into the Pauli frame once, commuting rotations merged and threshold 1e-12. Every other tool also runs on circuits cut to the "
           "observable's light cone, as one circuit (cone) or one per observable term (split), and counts its fastest "
           "setup. Quantum Circuit Simulator (QCS) runs uncut circuits, exactly and at the same 1e-12 threshold. "
