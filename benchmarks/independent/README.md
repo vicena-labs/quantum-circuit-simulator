@@ -23,6 +23,7 @@ These scripts compare Quantum Circuit Simulator with Qiskit Aer, Qulacs, PennyLa
 | `trunc_bench.py` | Quantum Circuit Simulator truncated mode (`BENCH_BACKEND=native` or `graph`), converting an absolute coefficient threshold to Quantum Circuit Simulator's relative one |
 | `scoreboard.sh`, `summarize_scoreboard.py` | The scoreboard: setup check, every run, and the tables |
 | `speed_chart.py` | The README's speed chart (`docs/images/speed-*.png`) and its data for the Vicena website, from a scoreboard run |
+| `rerun_pp.sh` | Reruns only PauliPropagation.jl in existing scoreboard results and rewrites their tables |
 | `isolated.py` | Runs each worker in its own process group, so a timeout or a stopped run kills the worker and everything it started |
 | `pp_tuned.jl` | PauliPropagation.jl as its authors recommend, on whole, cone or split circuits |
 | `summarize_v5.py` | Builds the 20 November tables from their raw JSONL files |
