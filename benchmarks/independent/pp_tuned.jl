@@ -1,5 +1,5 @@
-# PauliPropagation.jl run the way its authors recommend (in
-# the package's advanced_performance example): the
+# PauliPropagation.jl run the way its authors recommend in the package's
+# advanced_performance example: the
 # VectorPauliSum type, the fused kernels of the Performance sub-module, a
 # coefficient threshold just above rounding noise, and circuits cut to the
 # observable's light cone on the smallest system the cone fits in.

@@ -11,7 +11,7 @@ Quantum Circuit Simulator should be at least ten times faster than the fastest o
 - Every loss, refusal and timeout stays in the published tables.
 - Before figures are published, the setup goes to the compared tools' authors, and their corrections are applied and recorded.
 
-This rule exists because the first comparison broke it by accident. PauliPropagation.jl ran with its slow default container, no coefficient threshold and full 1,024-qubit grids, and the published lead of up to 12,000× fell to a fraction of that once the package ran as intended.
+This rule exists because the first comparison broke it by accident. PauliPropagation.jl ran with its slow default container, no coefficient threshold and full 1,024-qubit grids, and the published lead of up to 12,000× fell to a fraction of that once the package ran as intended. Private feedback from other tools' authors is never quoted or attributed in public material without their consent.
 
 ## Lessons from the first comparison
 
