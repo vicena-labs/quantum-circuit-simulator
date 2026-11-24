@@ -34,9 +34,9 @@ def hardware_efficient(n=8, layers=2, seed=0):
     body = []
     for layer in range(layers):
         for q in range(n):
-            body.append(f"ry({rng.uniform(-1, 1):.12g}) q[{q}];\nrz({rng.uniform(-1, 1):.12g}) q[{q}];\n")
+            body.append(f"ry({rng.uniform(-1, 1):.17g}) q[{q}];\nrz({rng.uniform(-1, 1):.17g}) q[{q}];\n")
         body += [f"cz q[{q}],q[{q + 1}];\n" for q in range(layer % 2, n - 1, 2)]
-    return HEADER.format(n=n) + "".join(body), " + ".join(f"{1 / n:.12g}*Z{q}" for q in range(n))
+    return HEADER.format(n=n) + "".join(body), " + ".join(f"{1 / n:.17g}*Z{q}" for q in range(n))
 
 
 def qaoa_ring(n=8, p=1, gamma=0.4, beta=0.3):
@@ -45,9 +45,9 @@ def qaoa_ring(n=8, p=1, gamma=0.4, beta=0.3):
     edges = [(i, (i + 1) % n) for i in range(n)]
     body = ["h q;\n"]
     for _ in range(p):
-        body += [f"rzz({2 * gamma:.12g}) q[{a}],q[{b}];\n" for a, b in edges]
-        body.append(f"rx({2 * beta:.12g}) q;\n")
-    return HEADER.format(n=n) + "".join(body), " + ".join(f"{1 / n:.12g}*Z{a}*Z{b}" for a, b in edges)
+        body += [f"rzz({2 * gamma:.17g}) q[{a}],q[{b}];\n" for a, b in edges]
+        body.append(f"rx({2 * beta:.17g}) q;\n")
+    return HEADER.format(n=n) + "".join(body), " + ".join(f"{1 / n:.17g}*Z{a}*Z{b}" for a, b in edges)
 
 
 def ising_trotter(n=8, steps=4, dt=0.1, coupling=1.0, field=1.0):
@@ -55,9 +55,9 @@ def ising_trotter(n=8, steps=4, dt=0.1, coupling=1.0, field=1.0):
     the observable is the mean Z magnetisation."""
     body = []
     for _ in range(steps):
-        body += [f"rzz({-2 * coupling * dt:.12g}) q[{i}],q[{i + 1}];\n" for i in range(n - 1)]
-        body.append(f"rx({-2 * field * dt:.12g}) q;\n")
-    return HEADER.format(n=n) + "".join(body), " + ".join(f"{1 / n:.12g}*Z{q}" for q in range(n))
+        body += [f"rzz({-2 * coupling * dt:.17g}) q[{i}],q[{i + 1}];\n" for i in range(n - 1)]
+        body.append(f"rx({-2 * field * dt:.17g}) q;\n")
+    return HEADER.format(n=n) + "".join(body), " + ".join(f"{1 / n:.17g}*Z{q}" for q in range(n))
 
 
 def kicked_ising(n=127, steps=5, theta_h=0.5, theta_j=-np.pi / 2):
@@ -73,10 +73,10 @@ def kicked_ising(n=127, steps=5, theta_h=0.5, theta_j=-np.pi / 2):
     layers = _edge_layers(edges)
     body = []
     for _ in range(steps):
-        body.append(f"rx({theta_h:.12g}) q;\n")
+        body.append(f"rx({theta_h:.17g}) q;\n")
         for layer in layers:
-            body += [f"rzz({theta_j:.12g}) q[{a}],q[{b}];\n" for a, b in layer]
-    return HEADER.format(n=n) + "".join(body), " + ".join(f"{1 / n:.12g}*Z{q}" for q in range(n))
+            body += [f"rzz({theta_j:.17g}) q[{a}],q[{b}];\n" for a, b in layer]
+    return HEADER.format(n=n) + "".join(body), " + ".join(f"{1 / n:.17g}*Z{q}" for q in range(n))
 
 
 def _edge_layers(edges):

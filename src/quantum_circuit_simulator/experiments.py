@@ -329,7 +329,7 @@ def _instance(circuit, observable, n, circuits, parameters):
         from .interop import _parse_qasm2
         source = circuits.load(circuit, n)
         width = _parse_qasm2(source)[0]
-        default = " + ".join(f"{1 / width:.12g}*Z{q}" for q in range(width))
+        default = " + ".join(f"{1 / width:.17g}*Z{q}" for q in range(width))
         return source, observable(n) if callable(observable) else (observable or default)
     if isinstance(circuit, str) and circuit in circuits.FAMILIES:
         if n is None:
