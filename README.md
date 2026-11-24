@@ -64,7 +64,7 @@ A quantum computer's output can be checked on an ordinary computer by simulating
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/speed-dark.png">
-  <img alt="Time per evaluation on a log scale for ten circuits: Quantum Circuit Simulator against the fastest of seven other simulators. It is 16 to 22,000 times faster on eight of them, the only one to finish IBM's 127-qubit experiment at a general angle, 4 to 6 times faster on two small circuits, and refuses a 100-qubit, 8-layer circuit that quimb solves in 1.8 seconds" src="docs/images/speed-light.png">
+  <img alt="Time per evaluation on a log scale for thirteen circuits: Quantum Circuit Simulator against the fastest of seven other simulators. It is 14 to 22,000 times faster on seven of them, the only one to finish IBM's 127-qubit experiment at a general angle, 4 to 6 times faster on two small circuits, and refuses four deep circuits that quimb or Aer solve in 0.2 to 14 seconds" src="docs/images/speed-light.png">
 </picture>
 
 **What it means in practice:**

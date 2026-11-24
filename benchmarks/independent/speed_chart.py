@@ -25,20 +25,23 @@ spec.loader.exec_module(summary)
 
 LIMIT = 120.0  # each run's time limit, in seconds
 # Workload, plain name, the detail an expert needs. Strongest results first, then
-# the two small circuits under a tenfold lead, then a circuit QCS refuses.
+# the two small circuits under a tenfold lead, then every circuit QCS refuses.
 ROWS = [
-    ("K_eagle_mz_S5_t1pi8", "IBM's 127-qubit utility experiment", "Kicked Ising, 5 steps, θh = π/8, exact"),
-    ("K_eagle_mz_S5_t4pi8", "Same experiment at θh = π/2", "A Clifford angle, where Pauli tools do best"),
-    ("B_noisy_6x6_L5", "Noisy circuit, 36 qubits, 5 layers", "6 × 6 grid, two-qubit depolarizing noise"),
+    ("K_eagle_mz_S5_t1pi8", "IBM's 127-qubit utility experiment", "Kicked Ising, 5 steps, θh = π/8, no truncation"),
+    ("K_eagle_mz_S5_t4pi8", "Same experiment at θh = π/2", "A special angle where Pauli tools are fastest"),
+    ("B_noisy_6x6_L5", "Noisy circuit, 36 qubits, 5 layers", "Others' Pauli terms multiply at this depth"),
     ("A_vqe_4x5_L4", "Noiseless circuit, 20 qubits, 4 layers", "Ising energy on a 4 × 5 grid"),
-    ("B_noisy_32x32_L3", "Noisy circuit, 1,024 qubits", "32 × 32 grid, 3 layers, mean magnetisation"),
+    ("B_noisy_32x32_L3", "Noisy circuit, 1,024 qubits", "32 × 32 grid, 3 layers"),
     ("B_noisy_20x20_L3", "Noisy circuit, 400 qubits", "20 × 20 grid, 3 layers"),
     ("B_noisy_2x5_L4", "Noisy circuit, 10 qubits", "2 × 5 grid, 4 layers"),
-    ("A_vqe_3x4_L2", "Small circuit, 12 qubits", "2 layers; call overhead dominates"),
-    ("C_centre_10x10_L4", "One qubit's value, 100 qubits", "4 layers, centre Z"),
+    ("A_vqe_3x4_L2", "Small circuit, 12 qubits", "2 layers; the call itself takes most of the time"),
+    ("C_centre_10x10_L4", "One qubit's value, 100 qubits", "10 × 10 grid, 4 layers"),
+    ("C_centre_10x10_L6", "One qubit's value, 100 qubits, 6 layers", "Too deep for exact Pauli propagation"),
     ("C_centre_10x10_L8", "One qubit's value, 100 qubits, 8 layers", "Too deep for exact Pauli propagation"),
+    ("C_centre_32x32_L6", "One qubit's value, 1,024 qubits, 6 layers", "Too deep for exact Pauli propagation"),
+    ("A_vqe_4x6_L6", "Noiseless circuit, 24 qubits, 6 layers", "Too deep for exact Pauli propagation"),
 ]
-SETUP = {"whole": "whole circuit", "cone": "light-cone cut", "split": "one circuit per term"}
+SETUP = {"whole": "whole circuit", "cone": "only gates that matter", "split": "each term separately"}
 THEMES = {
     "light": {"surface": "#fcfcfb", "ink": "#1a1a19", "muted": "#6b6a66", "grid": "#e4e3df",
               "ours": "#9a6a00", "other": "#256abf"},
@@ -143,8 +146,8 @@ def draw(rows, machine, theme, font, path):
     fig.text(0.02, title_y - 0.36 / height,
              f"One CPU thread per tool on a Vicena computer ({machine['cpu'].split(' 32-Core')[0]}). "
              "Blue is the fastest of seven other simulators: PauliPropagation.jl, IBM pauli-prop, sparse Pauli dynamics, "
-             "quimb, Qiskit Aer, Qulacs and PennyLane Lightning,\neach set up as its authors recommend, at a 1e-12 "
-             "coefficient threshold, on whole circuits and on circuits cut to the light cone. "
+             "quimb, Qiskit Aer, Qulacs and PennyLane Lightning,\neach set up as its authors recommend, Pauli tools at a "
+             "1e-12 coefficient threshold, on whole circuits and on circuits cut to the light cone; QCS without truncation. "
              "Data and method: benchmarks/independent.", color=theme["muted"], fontsize=8.8, va="top", linespacing=1.5)
     handles = [Line2D([], [], ls="", marker="o", ms=8, color=theme["ours"], label="Quantum Circuit Simulator"),
                Line2D([], [], ls="", marker="o", ms=8, color=theme["other"], label="Fastest other simulator")]

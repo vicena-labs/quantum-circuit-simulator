@@ -18,7 +18,7 @@
   {
    "workload": "K_eagle_mz_S5_t1pi8",
    "name": "IBM's 127-qubit utility experiment",
-   "detail": "Kicked Ising, 5 steps, θh = π/8, exact",
+   "detail": "Kicked Ising, 5 steps, θh = π/8, no truncation",
    "qcs_s": 0.081155925989151,
    "other_s": null,
    "other_tool": null,
@@ -27,7 +27,7 @@
   {
    "workload": "K_eagle_mz_S5_t4pi8",
    "name": "Same experiment at θh = π/2",
-   "detail": "A Clifford angle, where Pauli tools do best",
+   "detail": "A special angle where Pauli tools are fastest",
    "qcs_s": 0.008665338158607483,
    "other_s": 0.1421968936920166,
    "other_tool": "PauliPropagation.jl",
@@ -36,7 +36,7 @@
   {
    "workload": "B_noisy_6x6_L5",
    "name": "Noisy circuit, 36 qubits, 5 layers",
-   "detail": "6 × 6 grid, two-qubit depolarizing noise",
+   "detail": "Others' Pauli terms multiply at this depth",
    "qcs_s": 0.0006305128335952759,
    "other_s": 13.877916097640991,
    "other_tool": "PauliPropagation.jl",
@@ -54,7 +54,7 @@
   {
    "workload": "B_noisy_32x32_L3",
    "name": "Noisy circuit, 1,024 qubits",
-   "detail": "32 × 32 grid, 3 layers, mean magnetisation",
+   "detail": "32 × 32 grid, 3 layers",
    "qcs_s": 0.00032085180282592773,
    "other_s": 0.039112091064453125,
    "other_tool": "PauliPropagation.jl",
@@ -81,7 +81,7 @@
   {
    "workload": "A_vqe_3x4_L2",
    "name": "Small circuit, 12 qubits",
-   "detail": "2 layers; call overhead dominates",
+   "detail": "2 layers; the call itself takes most of the time",
    "qcs_s": 1.9371509552001953e-05,
    "other_s": 0.00011587142944335938,
    "other_tool": "PauliPropagation.jl",
@@ -90,10 +90,19 @@
   {
    "workload": "C_centre_10x10_L4",
    "name": "One qubit's value, 100 qubits",
-   "detail": "4 layers, centre Z",
+   "detail": "10 × 10 grid, 4 layers",
    "qcs_s": 4.146993160247803e-05,
    "other_s": 0.00017404556274414062,
    "other_tool": "PauliPropagation.jl",
+   "other_setup": "cone"
+  },
+  {
+   "workload": "C_centre_10x10_L6",
+   "name": "One qubit's value, 100 qubits, 6 layers",
+   "detail": "Too deep for exact Pauli propagation",
+   "qcs_s": null,
+   "other_s": 0.21565455198287964,
+   "other_tool": "quimb",
    "other_setup": "cone"
   },
   {
@@ -104,6 +113,24 @@
    "other_s": 1.8374632894992828,
    "other_tool": "quimb",
    "other_setup": "split"
+  },
+  {
+   "workload": "C_centre_32x32_L6",
+   "name": "One qubit's value, 1,024 qubits, 6 layers",
+   "detail": "Too deep for exact Pauli propagation",
+   "qcs_s": null,
+   "other_s": 0.21081197261810303,
+   "other_tool": "quimb",
+   "other_setup": "split"
+  },
+  {
+   "workload": "A_vqe_4x6_L6",
+   "name": "Noiseless circuit, 24 qubits, 6 layers",
+   "detail": "Too deep for exact Pauli propagation",
+   "qcs_s": null,
+   "other_s": 14.031313374638557,
+   "other_tool": "Aer",
+   "other_setup": "cone"
   }
  ]
 }
