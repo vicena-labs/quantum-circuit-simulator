@@ -109,11 +109,13 @@ for w in order:
     t_one = best(theirs[w], single)
     rep_text, rep = ratio(o_rep[0] if o_rep else None, t_rep[0] if t_rep else None)
     one_text, one = ratio(o_one[0] if o_one else None, t_one[0] if t_one else None)
-    for name, x, us in (("repeated", rep, o_rep), ("single", one, o_one)):
+    for name, x, us, them in (("repeated", rep, o_rep, t_rep), ("single", one, o_one, t_one)):
         if x is not None:
             counts[name, x >= TARGET] += 1
         elif us is not None:
             counts[name, "only"] += 1
+        elif them is not None:
+            counts[name, "lost"] += 1
         else:
             counts[name, "none"] += 1
     table.append(f"| {w} | " + (f"{f(o_rep[0])} ({o_rep[1]}, {o_rep[2]}, {err(w, o_rep[3])})" if o_rep else "refused")
@@ -125,6 +127,7 @@ print("## Summary\n")
 for name in ("repeated", "single"):
     print(f"- **{name.capitalize()}:** {counts[name, True]} workloads at {TARGET:.0f}× or more, "
           f"{counts[name, False]} below, {counts[name, 'only']} that only QCS finished, "
+          f"{counts[name, 'lost']} that QCS refused and another tool finished, "
           f"{counts[name, 'none']} that no tool finished.")
 print("\n## Values\n")
 print("| Workload | QCS repeated (backend, mode, error) | Fastest other, repeated (setup, error) | QCS lead | "
