@@ -12,6 +12,9 @@
 # is a fresh process with a BENCH_TIMEOUT-second limit (default 120). The
 # tables go to <out-dir>/scoreboard.md; the raw records stay beside them.
 set -euo pipefail
+# Stopping the scoreboard stops its drivers, and each driver kills its worker's
+# process group, so no worker keeps running and loading the machine.
+trap 'pkill -TERM -P $$ 2>/dev/null; exit 143' TERM INT
 OUT=$(mkdir -p "$1" && cd "$1" && pwd)
 THREADS=${2:-1}
 shift $(( $# < 2 ? $# : 2 ))

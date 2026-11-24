@@ -8,6 +8,15 @@ Cold wall time = process start (incl. Julia startup, package load, JIT) to exit.
 """
 import json, os, subprocess, sys, time
 
+def _isolated():
+    # Loaded by path: drivers run with python -I, which leaves this directory off sys.path.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("isolated", os.path.join(os.path.dirname(os.path.abspath(__file__)), "isolated.py"))
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    return module
+
+
+isolated = _isolated()
 env_dir, wl, out, threads, tol, maxw, *names = sys.argv[1:]
 here = os.path.dirname(os.path.abspath(__file__))
 timeout = float(os.environ.get("BENCH_TIMEOUT", 180))
@@ -17,10 +26,9 @@ for name in names:
         mode = os.environ.get("PP_MODE", "propagate")
         args = ([os.path.join(here, "pp_tuned.jl"), wl, name, os.environ.get("PP_PARTS", "whole"), tol] if mode == "tuned"
                 else [os.path.join(here, "pp_bench.jl"), wl, name, tol, maxw, mode])
-        p = subprocess.run(["julia", f"--project={env_dir}", "-t", threads, *args],
-                           capture_output=True, text=True, timeout=timeout)
-        lines = [l for l in p.stdout.splitlines() if l.startswith("RESULT ")]
-        rec = json.loads(lines[-1][7:]) if lines else dict(workload=name, error=p.stderr[-300:])
+        code, stdout, stderr = isolated.run(["julia", f"--project={env_dir}", "-t", threads, *args], timeout)
+        lines = [l for l in stdout.splitlines() if l.startswith("RESULT ")]
+        rec = json.loads(lines[-1][7:]) if lines else dict(workload=name, error=isolated.failure(code, stderr))
     except subprocess.TimeoutExpired:
         rec = dict(workload=name, error=f"timeout>{timeout:.0f}s")
     rec.setdefault("tool", "PauliPropagation.jl" + {"surrogate": " surrogate", "tuned": " tuned"}.get(os.environ.get("PP_MODE"), ""))

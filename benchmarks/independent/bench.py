@@ -635,8 +635,18 @@ def _fit_pauli_prop(a):
         j += 1
 
 
+
+def _isolated():
+    # Loaded by path: drivers run with python -I, which leaves this directory off sys.path.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("isolated", os.path.join(os.path.dirname(os.path.abspath(__file__)), "isolated.py"))
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    return module
+
+
 def run(out, names, timeout):
     import platform
+    isolated = _isolated()
     py = sys.executable
     for name in names:
         w = WORKLOADS[name]
@@ -646,12 +656,11 @@ def run(out, names, timeout):
             env = dict(os.environ, **THREADS)
             t = time.perf_counter()
             try:
-                p = subprocess.run([py, "-I", __file__, "worker", name, tool], capture_output=True, text=True,
-                                   timeout=timeout, env=env)
+                code, stdout, stderr = isolated.run([py, "-I", __file__, "worker", name, tool], timeout, env)
                 wall = time.perf_counter() - t
-                line = [l for l in p.stdout.splitlines() if l.startswith("RESULT ")]
+                line = [l for l in stdout.splitlines() if l.startswith("RESULT ")]
                 rec = json.loads(line[-1][7:]) if line else dict(workload=name, tool=tool,
-                                                                error=f"no result: {p.stderr[-300:]}")
+                                                                error=isolated.failure(code, stderr))
                 rec["cold_process_wall_s"] = wall
             except subprocess.TimeoutExpired:
                 rec = dict(workload=name, tool=tool, error=f"timeout>{timeout}s")

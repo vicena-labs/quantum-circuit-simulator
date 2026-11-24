@@ -22,6 +22,7 @@ These scripts compare Quantum Circuit Simulator with Qiskit Aer, Qulacs, PennyLa
 | `pp_bench.jl`, `run_pp.py` | PauliPropagation.jl: exact, truncated (`min_abs_coeff`, `max_weight`) or its reusable surrogate (`PP_MODE=surrogate`) |
 | `trunc_bench.py` | Quantum Circuit Simulator truncated mode (`BENCH_BACKEND=native` or `graph`), converting an absolute coefficient threshold to Quantum Circuit Simulator's relative one |
 | `scoreboard.sh`, `summarize_scoreboard.py` | The scoreboard: setup check, every run, and the tables |
+| `isolated.py` | Runs each worker in its own process group, so a timeout or a stopped run kills the worker and everything it started |
 | `pp_tuned.jl` | PauliPropagation.jl as its authors recommend, on whole, cone or split circuits |
 | `summarize_v5.py` | Builds the 20 November tables from their raw JSONL files |
 
@@ -59,6 +60,7 @@ python summarize_v5.py results > tables.md
   Every adapter is now checked against Qiskit or Quantum Circuit Simulator on a small case before timing.
 - **Fair settings:** the 20 November run passed `min_abs_coeff = 0` to PauliPropagation.jl, used its slower `PauliSum` and ran full 1,024-qubit grids. A zero threshold keeps rounding noise around 1e-16 alive, `VectorPauliSum` and the `Performance` module are its documented fast path, and shallow circuits on large systems waste work outside the light cone. Fixing all three cut its time on the 1,024-qubit circuits from 4.2 s to 29–56 ms, and the scoreboard now applies the same treatment to every competitor.
 - **Weight conventions differ:** PauliPropagation.jl counts Pauli weight over the whole string, Quantum Circuit Simulator only on wires still open. Only coefficient-only truncation is like for like.
+- **Orphaned workers:** on the first Vicena run, stopping the scoreboard left workers from interrupted runs running for hours, loading the machine under later measurements. Workers now run in their own process groups, killed on timeout and when the run stops; check for stray `bench.py worker` processes before timing.
 - **Machine load:** background applications made 8-thread figures unreliable and slowed Julia start-up to tens of seconds. Timings belong on a dedicated machine.
 
 Return to [benchmarks](../README.md).

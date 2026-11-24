@@ -70,15 +70,18 @@ def worker(name, coeff, weight, threads):
 if sys.argv[1] == "worker":
     worker(sys.argv[2], float(sys.argv[3]), sys.argv[4], int(sys.argv[5]))
 else:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("isolated", os.path.join(HERE, "isolated.py"))
+    isolated = importlib.util.module_from_spec(spec); spec.loader.exec_module(isolated)
     out, coeff, weight, threads, *names = sys.argv[2:]
     timeout = float(os.environ.get("BENCH_TIMEOUT", 180))
     for name in names:
         t = time.perf_counter()
         try:
-            p = subprocess.run([sys.executable, "-I", __file__, "worker", name, coeff, weight, threads],
-                               capture_output=True, text=True, timeout=timeout)
-            lines = [l for l in p.stdout.splitlines() if l.startswith("RESULT ")]
-            rec = json.loads(lines[-1][7:]) if lines else dict(workload=name, error=p.stderr[-300:])
+            code, stdout, stderr = isolated.run([sys.executable, "-I", __file__, "worker", name, coeff, weight, threads],
+                                                timeout)
+            lines = [l for l in stdout.splitlines() if l.startswith("RESULT ")]
+            rec = json.loads(lines[-1][7:]) if lines else dict(workload=name, error=isolated.failure(code, stderr))
         except subprocess.TimeoutExpired:
             rec = dict(workload=name, error=f"timeout>{timeout:.0f}s")
         rec["cold_process_wall_s"] = time.perf_counter() - t
