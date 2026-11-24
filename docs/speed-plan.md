@@ -36,7 +36,7 @@ An improvement counts only when the full test suite passes, values agree with an
 
 ## Where we stand
 
-Measured on a Vicena computer on 23–24 November 2026 with commit `c5127f0` ([results](../benchmarks/independent/results-2026-11-24-vicena/README.md)). For one more evaluation of a prepared circuit, 14 of 26 workloads are at least ten times ahead and 3 only we finish, including the 127-qubit kicked Ising at general angles. Short of the goal:
+Measured on a Vicena computer on 23–24 November 2026 with commit `1a190eb` ([results](../benchmarks/independent/results-2026-11-24-vicena/README.md)). For one more evaluation of a prepared circuit, 14 of 26 workloads are at least ten times ahead and 3 only we finish, including the 127-qubit kicked Ising at general angles. Short of the goal:
 
 | Gap | Cause |
 | --- | --- |
