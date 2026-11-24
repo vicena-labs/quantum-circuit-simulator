@@ -1,0 +1,19 @@
+{
+ "cpu": "AMD EPYC 7502P 32-Core Processor",
+ "logical_cpus": 16,
+ "memory_gib": 32.0,
+ "system": "Linux-5.15.0-102-generic-x86_64-with-glibc2.36",
+ "python": "3.12.10",
+ "threads": 16,
+ "versions": {
+  "quantum-circuit-simulator": "0.5.0rc5",
+  "qiskit": "2.6.2",
+  "qiskit-aer": "0.18.4",
+  "qulacs": "0.6.14",
+  "pennylane": "0.45.1",
+  "pennylane-lightning": "0.45.0",
+  "quimb": "1.15.0",
+  "pauli-prop": "0.2.1",
+  "spd": "git f694c9c"
+ }
+}
