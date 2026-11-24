@@ -4,6 +4,8 @@ The architecture cleanup removes demonstrated work and adds alternate representa
 
 ## Comparison on a Vicena computer
 
+> **Being rerun.** This run used PauliPropagation.jl without the workspace reuse and `MultiPauliSum` zones of its advanced-performance notebook, so leads over it, and the counts below, may be too large.
+
 The [scoreboard](../benchmarks/independent/README.md) ran on a Vicena computer (AMD EPYC 7502P, 16-CPU quota, 32 GiB) on 23–24 November 2026, with the layer-fused kernel of commit `1a190eb`, once with one thread per tool and once with sixteen. Every other tool ran as its authors recommend and also on circuits cut to the light cone, and its fastest setup counts. [Both tables and every raw record](../benchmarks/independent/results-2026-11-24-vicena/README.md) keep every refusal and timeout; the README's [How fast it is](../README.md#how-fast-it-is) summarises them.
 
 Of 26 workloads, for one more evaluation of a prepared circuit: 14 at least ten times faster than the fastest other tool, 2 faster by less (4–7×, small circuits where per-call overhead dominates), 3 that only Quantum Circuit Simulator finished (IBM's 127-qubit kicked Ising at general angles, 81–86 ms exact), 4 deep circuits it refused and quimb or Aer solved, and 3 that no tool finished. Sixteen threads left its times almost unchanged, since each of these workloads is one cone group or many tiny ones, while Aer and quimb gained; the counts stayed the same.

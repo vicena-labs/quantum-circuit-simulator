@@ -33,7 +33,7 @@
 
 Or type your own question at [vicena.ai](https://vicena.ai).
 
-**Release candidate 0.5.0rc5, by Mehdi Farza at Vicena Labs, licensed under Apache-2.0.** It is not yet published on PyPI; install it from a checkout with `pip install .`. Once released, `pip install quantum-circuit-simulator` will install it. The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](#citing-and-attribution) and the [related work](docs/related-work.md) it builds on.
+**Release candidate 0.5.0rc5, by Mehdi Farza at Vicena Labs, licensed under Apache-2.0.** It is not yet published on PyPI; [install it from GitHub](#install-and-run-locally). The repository contains the source, tests, examples and benchmark evidence. See [LICENSE](LICENSE), [third-party notices](THIRD_PARTY.md), [how to cite it](#citing-and-attribution) and the [related work](docs/related-work.md) it builds on.
 
 ## What it does
 
@@ -60,18 +60,9 @@ Supported operations include H, SX, X/Y/Z, RX/RY/RZ, CZ, ECR, fSim (theta deriva
 
 ## How fast it is
 
-A quantum computer's output can be checked on an ordinary computer by simulating the same circuit. We timed this package against **seven other open-source simulators on 26 circuits**, from 10 to 1,024 qubits, on one Vicena computer (an AMD EPYC server, 23–24 November 2026). Each simulator was set up the way its own authors recommend, and also given circuits trimmed to the part that affects the answer; its fastest setup counts. On **14 of the 26 circuits this package is at least 10 times faster** than the fastest of the seven; on 3, including IBM's 127-qubit utility experiment, it is the only one that finished within two minutes; on 4 deep circuits it refuses and others finish.
+A quantum computer's output can be checked on an ordinary computer by simulating the same circuit. We compare this package with **seven other open-source simulators on 26 circuits**, from 10 to 1,024 qubits, on one Vicena computer (an AMD EPYC server).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/speed-dark.png">
-  <img alt="Time per evaluation on a log scale for thirteen circuits: Quantum Circuit Simulator against the fastest of seven other simulators. It is 14 to 22,000 times faster on seven of them, the only one to finish IBM's 127-qubit experiment at a general angle, 4 to 6 times faster on two small circuits, and refuses four deep circuits that quimb or Aer solve in 0.2 to 14 seconds" src="docs/images/speed-light.png">
-</picture>
-
-**What it means in practice:**
-
-- **IBM's 127-qubit utility experiment** ([Kim et al., Nature 2023](https://doi.org/10.1038/s41586-023-06096-3)), five steps at a general angle: the exact value in 81 ms and every gradient in 92 ms. No other simulator finished in 120 s, with one thread or with sixteen.
-- **Noisy circuits of 400 and 1,024 qubits:** 0.15–0.35 ms per evaluation, 101–209 times faster on one thread and 198–273 times faster when every tool had 16 threads.
-- **Gradients:** every shared-parameter gradient in one reverse pass, 16–1,690 times faster where another tool returns gradients at all; none of the others returns gradients through noise.
+**The comparison is being rerun, so no speed ratios are quoted here for now.** The published tables of 23–24 November 2026 ran PauliPropagation.jl without two techniques from its own advanced-performance notebook: a workspace sized up front and `MultiPauliSum` zones. On one circuit tried since on a laptop, these made it about 2 times faster on one thread and 6 times on eight; on two large shallow grids they gained little or nothing. Leads over that tool in those tables may therefore be too large, and its failures there may not hold. The figures return here, with a chart, when the rerun is complete. Until then [the tables and raw records](benchmarks/independent/results-2026-11-24-vicena/README.md) stand as a record of that run.
 
 **The other simulators**, and how each ran:
 
@@ -87,28 +78,30 @@ Every simulator also ran on circuits cut to each observable's backward light con
 
 **Where it is not faster:**
 
-- **Two small circuits** gain less than tenfold: 6 times on 12 qubits and 4 times on one qubit's value in a 100-qubit circuit, where each call's fixed cost dominates.
-- **Deep circuits.** Exact mode refuses circuits of 6–8 layers at its million-term cap; quimb solves three of them in 0.2–1.8 s and Aer the 24-qubit one in 1–14 s. Two deep noisy circuits and IBM's 20-step circuit were finished by no tool.
-- **One-off evaluations of large circuits.** Including setup, the graph backend's compilation (100–300 ms on the 400- and 1,024-qubit grids) makes it between about as fast as PauliPropagation.jl and 1.8 times slower there; the native backend needs no compilation.
+- **Small circuits**, where each call's fixed cost dominates.
+- **Deep circuits.** In the published run, exact mode refused circuits of 6–8 layers at its million-term cap; quimb solved three of them in 0.2–1.8 s and Aer the 24-qubit one in 1–14 s. Two deep noisy circuits and IBM's 20-step circuit were finished by no tool.
+- **One-off evaluations of large circuits.** The graph backend's compilation takes 100–300 ms on the 400- and 1,024-qubit grids, so including setup it was between about as fast as PauliPropagation.jl and 1.8 times slower there; the rerun may widen that. The native backend needs no compilation.
 
-**Why it is fast:** each observable touches only its backward light cone, and a wire is contracted into the input state as soon as propagation passes it; gates and noise on the same wires are merged, and each layer of gates is applied to a Pauli term in one pass; and the graph backend compiles the propagation once into flat arithmetic, so each new parameter vector is one pass forward and one back.
+**What makes repeated evaluations cheap:** each observable touches only its backward light cone, and a wire is contracted into the input state as soon as propagation passes it; gates and noise on the same wires are merged, and each layer of gates is applied to a Pauli term in one pass; and the graph backend compiles the propagation once into flat arithmetic, so each new parameter vector is one pass forward and one back.
 
-**Reproduce it** with one command, `benchmarks/independent/scoreboard.sh <out-dir> <threads>`, which checks every tool's installation, records the machine and versions, and marks every circuit where this package is less than ten times faster. The first comparison ran PauliPropagation.jl with slower default settings; every tool now runs as its own documentation advises. We welcome corrections from any tool's authors. [Measured performance](docs/performance.md) explains the method, and [the raw records](benchmarks/independent/results-2026-11-24-vicena/README.md) keep every refusal and timeout.
+**Reproduce it** with one command, `benchmarks/independent/scoreboard.sh <out-dir> <threads>`, which checks every tool's installation, records the machine and versions, and marks every circuit where this package is less than ten times faster. The first comparison ran PauliPropagation.jl with slower default settings; the rerun adds its documented advanced techniques. We welcome corrections from any tool's authors. [Measured performance](docs/performance.md) explains the method, and [the raw records](benchmarks/independent/results-2026-11-24-vicena/README.md) keep every refusal and timeout.
 
 ## Install and run locally
 
-Use Python 3.10 or later. NumPy is the only runtime Python dependency. Binary wheels are published for Linux, macOS and Windows; on other platforms, installation compiles the extension and needs a C++17 compiler and Python development headers.
+Use Python 3.10 or later. NumPy is the only runtime Python dependency. The package is not on PyPI yet, so installation compiles the extension from source and needs Git, a C++17 compiler and Python development headers.
 
 ```bash
-python -m pip install quantum-circuit-simulator      # or, from a checkout: python -m pip install .
+python -m pip install "git+https://github.com/vicena-labs/quantum-circuit-simulator"      # or, from a checkout: python -m pip install .
 quantum-circuit-simulator doctor
 quantum-circuit-simulator example > problem.json
 quantum-circuit-simulator run problem.json
 ```
 
+For an optional extra such as `[qiskit]`, install `"quantum-circuit-simulator[qiskit] @ git+https://github.com/vicena-labs/quantum-circuit-simulator"`.
+
 ## Use it from OpenQASM, Qiskit or an agent
 
-Existing circuits run without rewriting. OpenQASM 2 is read with no dependencies; OpenQASM 3 and Qiskit circuits need `pip install "quantum-circuit-simulator[qiskit]"`. Every gate is decomposed exactly into the native set, and Qiskit Parameters become shared parameters, so one prepared plan serves a whole parameter sweep.
+Existing circuits run without rewriting. OpenQASM 2 is read with no dependencies; OpenQASM 3 and Qiskit circuits need the `[qiskit]` extra. Every gate is decomposed exactly into the native set, and Qiskit Parameters become shared parameters, so one prepared plan serves a whole parameter sweep.
 
 ```bash
 quantum-circuit-simulator plan circuit.qasm --observable "0.5*Z0*Z1 - X3"   # dry run: is exact feasible?
@@ -149,7 +142,7 @@ With more than 16 parameters, gradients come from the graph backend's single rev
 
 These modules follow what quantum simulation and algorithm papers do today; [research practice](docs/research-practice.md) lists the publications behind each and what is still missing. Every one is checked against an exact reference in the tests.
 
-- **Chemistry** (`chemistry`, `pip install "quantum-circuit-simulator[chemistry]"` for PySCF): molecules by name or geometry, active spaces, Jordan–Wigner, Bravyi–Kitaev and parity mappings, Z2 tapering, Hartree–Fock states and UCCSD ansätze. H2 matches PySCF's FCI energy to 1e-8 in every mapping; tapering takes it from 4 qubits to 1.
+- **Chemistry** (`chemistry`, the `[chemistry]` extra for PySCF): molecules by name or geometry, active spaces, Jordan–Wigner, Bravyi–Kitaev and parity mappings, Z2 tapering, Hartree–Fock states and UCCSD ansätze. H2 matches PySCF's FCI energy to 1e-8 in every mapping; tapering takes it from 4 qubits to 1.
 - **Error mitigation** (`mitigation`): propagated noise absorption (`pna`, the noise inverted into the observable by Pauli propagation), probabilistic error cancellation with its sampling overhead (`pec`, `pec_overhead`), and readout correction (`readout_correct`, `mitigated_counts`, TREX).
 - **Measurement planning** (`measurement`): grouping by qubit-wise or full commutation with the Clifford that diagonalises each group, exact shot budgets with optimal allocation, and classical shadows.
 - **Hamiltonian dynamics** (`dynamics`): Suzuki formulas of any even order, qDRIFT, commutator bounds on the Trotter error, and multi-product formulas.
@@ -178,7 +171,7 @@ print(al.qaoa(cut, depth=2, init="fixed-angle").value, baselines.brute_force(cut
 
 ## States and sampling
 
-`quantum_circuit_simulator.statevector` simulates states directly: amplitudes of noise-free circuits up to 28 qubits, density matrices up to 12 qubits, and measured bitstrings with noise and readout error, sampled exactly from the density matrix or from one quantum trajectory per shot. Clifford circuits of any size are sampled through Stim (`pip install "quantum-circuit-simulator[stim]"`). A circuit compiled onto a large chip is sampled on the qubits it uses only. The solver router cross-checks Pauli propagation against these simulators on request (`solve(..., cross_check=True)`).
+`quantum_circuit_simulator.statevector` simulates states directly: amplitudes of noise-free circuits up to 28 qubits, density matrices up to 12 qubits, and measured bitstrings with noise and readout error, sampled exactly from the density matrix or from one quantum trajectory per shot. Clifford circuits of any size are sampled through Stim (the `[stim]` extra). A circuit compiled onto a large chip is sampled on the qubits it uses only. The solver router cross-checks Pauli propagation against these simulators on request (`solve(..., cross_check=True)`).
 
 ```bash
 quantum-circuit-simulator sample circuit.qasm --shots 4000 --device heavy-hex-127 --seed 1
@@ -216,7 +209,7 @@ Every command prints one JSON document tagged `schema: quantum-circuit-simulator
 
 The figures are drawn from the bundled data by [`tools/render_readme_images.py`](tools/render_readme_images.py). The qubit layer of the exploded view is the package's own CAD layout; the readout, wiring and package beneath it are drawn from the same positions to show how such a chip is built, not from IBM's design.
 
-**Annealing.** `annealing.anneal(problem, devices.get("dwave-advantage"))` embeds an Ising or QUBO problem on a D-Wave Advantage-style Pegasus chip (or Advantage2 Zephyr, Chimera, Pegasus, Zephyr) with minorminer, rescales it to the chip's h and J ranges, can add control errors, and samples it with simulated quantum annealing (path-integral Monte Carlo), simulated annealing or tabu search. It reports the best energy, the exact ground energy and its probability on small problems, chain lengths and chain breaks. These are models of an annealer, not the device. Needs `pip install "quantum-circuit-simulator[dwave]"`.
+**Annealing.** `annealing.anneal(problem, devices.get("dwave-advantage"))` embeds an Ising or QUBO problem on a D-Wave Advantage-style Pegasus chip (or Advantage2 Zephyr, Chimera, Pegasus, Zephyr) with minorminer, rescales it to the chip's h and J ranges, can add control errors, and samples it with simulated quantum annealing (path-integral Monte Carlo), simulated annealing or tabu search. It reports the best energy, the exact ground energy and its probability on small problems, chain lengths and chain breaks. These are models of an annealer, not the device. Needs the `[dwave]` extra.
 
 ```bash
 quantum-circuit-simulator devices                                     # layouts and real chips
@@ -233,7 +226,7 @@ quantum-circuit-simulator anneal --model maxcut --lattice regular --size 60,3 --
 - superconducting heavy-hex (including the 127-qubit IBM Eagle-style layout), square-grid and line chips;
 - all-to-all trapped ions;
 - neutral-atom arrays;
-- D-Wave-style Chimera, Pegasus and Zephyr annealer graphs (the last two need `pip install "quantum-circuit-simulator[dwave]"`).
+- D-Wave-style Chimera, Pegasus and Zephyr annealer graphs (the last two need the `[dwave]` extra).
 
 Catalogue noise values are typical figures for each technology, not calibration data for a particular chip.
 

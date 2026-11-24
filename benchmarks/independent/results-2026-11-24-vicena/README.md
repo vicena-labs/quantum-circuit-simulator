@@ -11,6 +11,7 @@ The [scoreboard](../README.md) run once with one thread per tool and once with s
 
 ## Caveats
 
+- **PauliPropagation.jl was not fully tuned.** This run did not use the workspace sized up front or the `MultiPauliSum` zones of its advanced-performance notebook. Its rows are being rerun with both; until then, ratios and failures involving it may overstate this package's lead.
 - **quimb used more than one core.** It starts helper processes of its own, so its one-thread figures had more of the machine than the label says. This favours quimb.
 - **Leftover helper processes.** When a quimb worker timed out, the harness of this run killed the worker but not quimb's helpers. Twenty of them stayed alive, blocked on a pipe; a sample showed them using no CPU, and they were killed before the sixteen-thread run finished. Workers now run in their own process groups (`isolated.py`), which prevents this.
 - **Failures without a reason.** Several PauliPropagation.jl rows are `failed` with an empty error: Julia exited without a result or a message, most likely killed for memory on the deep circuits. The harness now records the exit status.
