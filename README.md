@@ -74,7 +74,7 @@ On repeated runs of a prepared circuit, as in an optimiser or a parameter sweep,
 | Noiseless, 12 qubits, 2 layers | 21.1 µs | 103 µs | 4.9× |
 | One qubit's value, 100 qubits, 4 layers | 44.7 µs | 144 µs | 3.2× |
 
-Circuits where another tool ran out of memory are left out, as no comparison stands there, and single runs are not claimed. The figures come from the run of 23–24 November 2026 and a rerun of one tool on 24 November in more of its documented setups, on a machine that other work may have shared; a [paired run on an idle machine](benchmarks/independent/paired.py) will replace them. [The raw records and known faults of the first run](benchmarks/independent/results-2026-11-24-vicena/README.md) are published; the rerun's records are not published yet.
+These are seven of the 14 circuits where a comparison stands; the [full table](benchmarks/independent/conservative.py) runs from 3.2 to 103 times and reads the published records. Two circuits where the other tool was killed for memory are left out, and single runs are not claimed. The records are the [run of 23–24 November 2026](benchmarks/independent/results-2026-11-24-vicena/README.md) and a [rerun of one tool](benchmarks/independent/results-2026-11-24-rerun/README.md) on 24 November, each with its known faults listed. Other work may have shared the machine; a [paired run on an idle machine](benchmarks/independent/paired.py) will replace them.
 
 **The other simulators**, with thanks to the people who make them, and how each ran:
 
