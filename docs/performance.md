@@ -4,13 +4,15 @@ The architecture cleanup removes demonstrated work and adds alternate representa
 
 ## Comparison on a Vicena computer
 
+> **Single-run figures are invalid for PauliPropagation.jl**, whose setup time included Julia compilation.
+>
 > **Being rerun.** This run used PauliPropagation.jl without the workspace reuse and `MultiPauliSum` zones of its advanced-performance notebook, so leads over it, and the counts below, may be too large.
 
 The [scoreboard](../benchmarks/independent/README.md) ran on a Vicena computer (AMD EPYC 7502P, 16-CPU quota, 32 GiB) on 23–24 November 2026, with the layer-fused kernel of commit `1a190eb`, once with one thread per tool and once with sixteen. Every other tool ran as its authors recommend and also on circuits cut to the light cone, and its fastest setup counts. [Both tables and every raw record](../benchmarks/independent/results-2026-11-24-vicena/README.md) keep every refusal and timeout; the README's [How fast it is](../README.md#how-fast-it-is) summarises them.
 
 Of 26 workloads, for one more evaluation of a prepared circuit: 14 at least ten times faster than the fastest other tool, 2 faster by less (4–7×, small circuits where per-call overhead dominates), 3 that only Quantum Circuit Simulator finished (IBM's 127-qubit kicked Ising at general angles, 81–86 ms exact), 4 deep circuits it refused and quimb or Aer solved, and 3 that no tool finished. Sixteen threads left its times almost unchanged, since each of these workloads is one cone group or many tiny ones, while Aer and quimb gained; the counts stayed the same.
 
-Including setup, it leads by ten times or more on only 4–5 workloads: graph compilation costs 100–300 ms on the 400- and 1,024-qubit grids, about one PauliPropagation.jl run there. The approximate-mode comparison against the tuned tools has not been rerun.
+Including setup, it leads by ten times or more on only 4–5 workloads: setup, mostly building and preparing the circuit in Python, costs 100–300 ms on the 400- and 1,024-qubit grids, about one PauliPropagation.jl run there. The approximate-mode comparison against the tuned tools has not been rerun.
 
 An earlier comparison of 0.4.0 on an Apple M1 Pro laptop (20 November 2026, [tables](../benchmarks/independent/results-2026-11-20-laptop/v5_tables.md)) ran PauliPropagation.jl with its slower default container, no coefficient threshold and uncut 1,024-qubit grids. Its leads of up to 12,000 times against that tool, and its truncated-mode comparison, are superseded.
 

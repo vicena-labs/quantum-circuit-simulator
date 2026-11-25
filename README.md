@@ -80,7 +80,7 @@ Every simulator also ran on circuits cut to each observable's backward light con
 
 - **Small circuits**, where each call's fixed cost dominates.
 - **Deep circuits.** In the published run, exact mode refused circuits of 6–8 layers at its million-term cap; quimb solved three of them in 0.2–1.8 s and Aer the 24-qubit one in 1–14 s. Two deep noisy circuits and IBM's 20-step circuit were finished by no tool.
-- **One-off evaluations of large circuits.** The graph backend's compilation takes 100–300 ms on the 400- and 1,024-qubit grids, so including setup it was between about as fast as PauliPropagation.jl and 1.8 times slower there; the rerun may widen that. The native backend needs no compilation.
+- **One-off evaluations of large circuits.** Setup takes 100–300 ms on the 400- and 1,024-qubit grids, so for a single run this package is often slower than PauliPropagation.jl. The published single-run figures overstate it: they charged Julia 35–130 ms of compilation as setup, measured on a laptop, which can reverse the result on small circuits. Profiling puts most of that in building and preparing the circuit in Python, not in compiling the graph.
 
 **What makes repeated evaluations cheap:** each observable touches only its backward light cone, and a wire is contracted into the input state as soon as propagation passes it; gates and noise on the same wires are merged, and each layer of gates is applied to a Pauli term in one pass; and the graph backend compiles the propagation once into flat arithmetic, so each new parameter vector is one pass forward and one back.
 

@@ -66,6 +66,8 @@ function build(p)
     return circ, rot, VectorPauliSum(psum)
 end
 
+rebuild(raw) = [build(p) for p in raw]
+
 thetas(rot, s) = Float64[b + (par >= 0 ? s[par + 1] : 0.0) for (b, par) in rot]
 
 function value(parts, s)
@@ -117,11 +119,16 @@ try
     t = time(); v, nterms = value(parts, vecs[1]); rec["first_value_s"] = time() - t
     rec["value"] = v; rec["final_terms"] = nterms
     rec["since_start_to_first_value_s"] = time() - t_start
-    sizes = [max(16, 2 * length(Performance.propagate(c, p, thetas(r, vecs[1]); min_abs_coeff=tol))) for (c, r, p) in parts]
+    # PP_VARIANT times one variant only, so a process killed for memory loses no other.
+    only = get(ENV, "PP_VARIANT", "")
+    sizes = only == "plain" ? Int[] :
+        [max(16, 2 * length(Performance.propagate(c, p, thetas(r, vecs[1]); min_abs_coeff=tol))) for (c, r, p) in parts]
+    GC.gc()
     variants = [("plain", s -> value(parts, s)), ("cache", s -> value_cached(parts, s, sizes, false)),
                 ("zones", s -> value_cached(parts, s, sizes, true))]
     best = nothing
     for (name, run) in variants
+        only == "" || only == name || continue
         run(vecs[1])  # compile this variant before timing it
         ts = Float64[]
         for s in vecs[2:1 + reps]
@@ -135,8 +142,13 @@ try
     end
     rec["warm_value_s"] = best[1]; rec["variant"] = best[2]; rec["warm_value_samples"] = best[3]
     # Building again, now compiled, times the setup of one more circuit.
-    t = time(); [build(p) for p in raw]; rec["rebuild_s"] = time() - t
-    if !w.noisy
+    rebuild(raw)  # compiles the rebuild itself, which is not a cost of the circuit
+    rebuilds = Float64[]
+    for _ in 1:5
+        t = time(); rebuild(raw); push!(rebuilds, time() - t)
+    end
+    rec["rebuild_s"] = median(rebuilds)
+    if !w.noisy && only in ("", "plain")
         t = time(); e, g = gradient(parts, vecs[1], Int(w.nparams)); rec["first_grad_s"] = time() - t
         rec["gradient"] = g; rec["grad_value"] = e
         ts = Float64[]
@@ -144,7 +156,7 @@ try
             t = time(); gradient(parts, s, Int(w.nparams)); push!(ts, time() - t)
         end
         rec["warm_grad_s"] = median(ts); rec["warm_grad_samples"] = ts
-    else
+    elseif w.noisy
         rec["grad_unsupported"] = "rewindgradient does not support noise channels"
     end
 catch e
