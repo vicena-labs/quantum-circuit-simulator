@@ -5,7 +5,7 @@ import importlib.util
 import math
 from functools import lru_cache
 import numpy as np
-from ._reference import ConeOverflow
+from ._reference import ConeOverflow, NOISE_PARAMETERS
 
 
 class CStage(ct.Structure):
@@ -79,16 +79,28 @@ class NativePrepared:
     def __init__(self,circuit):
         self.c=circuit
         self.stages=(CStage*len(circuit.stages))()
-        for i,s in enumerate(circuit.stages):
-            a=self.stages[i]
-            a.q0=s.wires[0];a.q1=s.wires[1] if len(s.wires)==2 else -1
-            a.arity=len(s.wires);a.param=s.param
-            d=len(s.matrix)
-            t=np.ascontiguousarray(s.matrix,dtype=np.float64)
-            dt=np.ascontiguousarray(s.derivative,dtype=np.float64)
-            ct.memmove(ct.addressof(a)+CStage.ptm.offset,t.ctypes.data,d*d*8)
-            ct.memmove(ct.addressof(a)+CStage.dptm.offset,dt.ctypes.data,d*d*8)
         view = np.frombuffer(self.stages, dtype=_STAGE_DTYPE) if circuit.stages else None
+        if view is not None:
+            stages = circuit.stages
+            view['q0'] = [s.wires[0] for s in stages]
+            view['q1'] = [s.wires[1] if len(s.wires) == 2 else -1 for s in stages]
+            view['arity'] = [len(s.wires) for s in stages]
+            view['param'] = [s.param for s in stages]
+            for arity, size in ((1, 16), (2, 256)):
+                chosen = np.flatnonzero(view['arity'] == arity)
+                if len(chosen):
+                    # Circuits repeat a few matrices many times: convert each once.
+                    for field, name in (('ptm', 'matrix'), ('dptm', 'derivative')):
+                        matrices = [getattr(stages[i], name) for i in chosen]
+                        index, unique = {}, []
+                        order = [index.setdefault(id(m), len(index)) for m in matrices]
+                        seen = -1
+                        for k, m in zip(order, matrices):
+                            if k > seen:
+                                unique.append(m)
+                                seen = k
+                        table = np.concatenate(unique, axis=None).reshape(-1, size)
+                        view[field][chosen, :size] = table[order]
         self._ptm = view['ptm'] if view is not None else None
         self._dptm = view['dptm'] if view is not None else None
         self.params = view['param'] if view is not None else np.zeros(0, dtype=np.int32)
@@ -109,7 +121,20 @@ class NativePrepared:
             column([_ROTATIONS[s.name][2] for _, s in chosen], ct.c_double))
         self._shift_buffer = (ct.c_double * max(1, circuit.nparams))()
         self._other = [i for i, s in enumerate(circuit.stages)
-                       if s.param >= 0 and s.name not in _ROTATIONS]
+                       if s.param >= 0 and s.name not in _ROTATIONS and s.name not in NOISE_PARAMETERS]
+        # Error rates rewrite diagonal PTM entries: every one except the
+        # identity's for depolarising, the anticommuting ones for a Pauli error.
+        self._noise = []
+        for name, arity, size, entries, slope in (
+                ('DEPOLARIZE', 1, 4, (1, 2, 3), 4 / 3), ('DEPOLARIZE', 2, 16, tuple(range(1, 16)), 16 / 15),
+                ('X_ERROR', 1, 4, (2, 3), 2.), ('Y_ERROR', 1, 4, (1, 2), 2.), ('Z_ERROR', 1, 4, (1, 3), 2.)):
+            rows = [i for i, s in enumerate(circuit.stages)
+                    if s.param >= 0 and s.name == name and len(s.wires) == arity]
+            if rows:
+                stages = [circuit.stages[i] for i in rows]
+                self._noise.append((np.array(rows)[:, None], (np.array(entries) * (size + 1))[None, :], slope,
+                                    np.array([s.angle for s in stages]), np.array([s.scale for s in stages]),
+                                    np.array([s.param for s in stages])))
 
     def bind(self,deltas):
         """Bind a distinct shared-parameter vector without rebuilding static noise.
@@ -119,6 +144,14 @@ class NativePrepared:
         """
         if len(deltas)!=self.c.nparams or not all(math.isfinite(x) for x in deltas):
             raise ValueError('invalid shared-parameter vector')
+        bound = []
+        for rows, diagonal, slope, base, scale, param in self._noise:
+            rates = base + scale * np.asarray(deltas, dtype=float)[param]
+            if not np.all((rates >= 0) & (rates <= 1)):
+                raise ValueError('a bound error probability is outside [0, 1]')
+            bound.append((rows, diagonal, 1 - slope * rates))
+        for rows, diagonal, kept in bound:
+            self._ptm[rows, diagonal] = kept[:, None]
         count, columns = self._rotations
         if count:
             self._shift_buffer[:len(deltas)] = deltas

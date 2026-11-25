@@ -69,6 +69,8 @@ def _circuit(target):
     circuit = getattr(target, "circuit", target)
     if not isinstance(circuit, Circuit):
         raise TypeError("expected a Circuit or a Compiled circuit")
+    if any(s.param >= 0 and s.name in NOISE for s in circuit._impl.stages):
+        raise ValueError("error mitigation needs fixed noise; this circuit has parameterised noise")
     return circuit
 
 

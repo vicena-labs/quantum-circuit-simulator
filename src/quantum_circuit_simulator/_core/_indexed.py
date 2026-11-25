@@ -22,7 +22,9 @@ from ._reference import ConeOverflow
 
 # Generator norm bound 2*||G|| of each parameterised stage, used to bound the
 # gradient of truncated terms: RX/RY/RZ = exp(-i t P/2), fSim's iSWAP block.
-_LIPSCHITZ = {'RX': 1., 'RY': 1., 'RZ': 1., 'RZZ': 1., 'FSIM': 2.}
+_LIPSCHITZ = {'RX': 1., 'RY': 1., 'RZ': 1., 'RZZ': 1., 'FSIM': 2.,
+              'X_ERROR': 2., 'Y_ERROR': 2., 'Z_ERROR': 2.,
+              'DEPOLARIZE': 4 / 3}  # its PTM's slope, whose entries all act on distinct Paulis
 
 
 @dataclass(slots=True)
@@ -103,12 +105,7 @@ class ConeGroups:
         widest = max(map(len, cone_wires), default=0)
         if widest > max_cone_qubits:
             raise ConeOverflow(f'backward cone needs {widest} qubits; max_cone_qubits={max_cone_qubits}')
-        cone_stages = [[] for _ in initials]
-        for index, queries in enumerate(membership):
-            while queries:
-                bit = queries & -queries
-                cone_stages[bit.bit_length() - 1].append(index)
-                queries ^= bit
+        cone_stages = self._members(membership, len(initials))
         if stage_budgets is not None:
             per_cone, total = stage_budgets
             if max(map(len, cone_stages), default=0) > per_cone:
@@ -116,6 +113,28 @@ class ConeGroups:
             if sum(map(len, cone_stages)) > total:
                 raise ConeOverflow('wide preparation total selected stages exceeded')
         return [_Cone(t, w, s) for t, w, s in zip(initials, cone_wires, cone_stages)]
+
+    @staticmethod
+    def _members(membership, count):
+        """For each observable, the ascending stages whose mask holds its bit."""
+        width = (count + 7) // 8
+        out = [[] for _ in range(count)]
+        # Bounded unpacking: at most 4 MiB of bits expanded at once.
+        block = max(1, 4 * 1024 * 1024 // max(1, 8 * width))
+        for start in range(0, len(membership), block):
+            raw = b''.join([m.to_bytes(width, 'little') for m in membership[start:start + block]])
+            bits = np.unpackbits(np.frombuffer(raw, np.uint8).reshape(-1, width), axis=1, bitorder='little')
+            flat = np.flatnonzero(bits)
+            stages, queries = np.divmod(flat, 8 * width)
+            order = np.argsort(queries, kind='stable')
+            stages = (stages[order] + start).tolist()
+            ends = np.cumsum(np.bincount(queries, minlength=count)).tolist()
+            begin = 0
+            for query, end in enumerate(ends):
+                if end > begin:
+                    out[query].extend(stages[begin:end])
+                begin = end
+        return out
 
     def _initial_terms(self, coefficient, axes):
         """Readout-expanded value coefficients keyed by global (x, z) masks.

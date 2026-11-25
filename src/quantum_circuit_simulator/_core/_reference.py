@@ -76,6 +76,13 @@ def fsim(theta: float, phi: float) -> tuple[np.ndarray,np.ndarray,np.ndarray]:
     return u,dt,df
 
 
+_EYE4 = np.eye(4)
+_ZERO4 = np.zeros((4, 4))
+_ZERO16 = np.zeros((16, 16))
+for _array in (_EYE4, _ZERO4, _ZERO16):
+    _array.flags.writeable = False
+
+
 @lru_cache(maxsize=2048)
 def cached_gate_ptm(name:str,theta:float,parametric:bool):
     if name in GATE1 or name in GATE2:
@@ -93,12 +100,13 @@ def cached_gate_ptm(name:str,theta:float,parametric:bool):
         first, second, sign = {'RX': (2, 3, 1.), 'RY': (1, 2, 1.),
                                'RZ': (1, 3, -1.)}[name]
         c, s = math.cos(theta), math.sin(theta)
-        matrix = np.eye(4)
+        matrix = _EYE4.copy()
         matrix[first, first] = matrix[second, second] = c
         matrix[first, second] = sign*s
         matrix[second, first] = -sign*s
-        derivative = np.zeros((4, 4))
+        derivative = _ZERO4
         if parametric:
+            derivative = _ZERO4.copy()
             derivative[first, first] = derivative[second, second] = -s
             derivative[first, second] = sign*c
             derivative[second, first] = -sign*c
@@ -114,6 +122,34 @@ def depolarizing_ptm(p:float, n_wires:int):
     elif n_wires==2: scale=1-16*p/15; size=16
     else: raise ValueError('only 1/2 wire noise')
     arr=np.eye(size)*scale; arr[0,0]=1.
+    arr.flags.writeable=False
+    return arr
+
+
+@lru_cache(maxsize=3)
+def pauli_error_slope(axis:str):
+    """d pauli_error_ptm / dp: the Paulis (I, X, Z, Y) that anticommute with the axis lose 2p."""
+    arr=np.diag({'X':[0.,0.,-2.,-2.],'Y':[0.,-2.,-2.,0.],'Z':[0.,-2.,0.,-2.]}[axis])
+    arr.flags.writeable=False
+    return arr
+
+
+@lru_cache(maxsize=512)
+def pauli_error_ptm(axis:str,p:float):
+    if not 0<=p<=1: raise ValueError('invalid probability')
+    arr=np.eye(4)+p*pauli_error_slope(axis)
+    arr.flags.writeable=False
+    return arr
+
+
+NOISE_PARAMETERS = ('DEPOLARIZE', 'X_ERROR', 'Y_ERROR', 'Z_ERROR')
+
+
+@lru_cache(maxsize=2)
+def depolarizing_slope(n_wires:int):
+    """d depolarizing_ptm / dp, the same at every p."""
+    arr=np.eye(4**n_wires)*(-4/3 if n_wires==1 else -16/15); arr[0,0]=0.
+    arr.flags.writeable=False
     return arr
 
 
@@ -126,6 +162,7 @@ def relaxation_ptm(t:float, T1:float, T2:float) -> np.ndarray:
     long=math.exp(-t/T1);trans=math.exp(-t/T2)
     a=np.diag([1.,trans,long,trans])
     a[2,0]=1-long  # E†(Z)=(1-gamma)Z+gamma I
+    a.flags.writeable=False
     return a
 
 
@@ -178,7 +215,11 @@ class NoisyPauliCircuit:
 
     def _stage(self,wires,matrix,derivative=None,param=-1,name='',angle=None,phi=None,scale=1.,data=(),trusted=False):
         wires=tuple(wires)
-        if not 1<=len(wires)<=2 or len(set(wires))!=len(wires) or any(not 0<=w<self.nqubits for w in wires):
+        if len(wires)==1:
+            valid=0<=wires[0]<self.nqubits
+        else:
+            valid=len(wires)==2 and wires[0]!=wires[1] and 0<=wires[0]<self.nqubits and 0<=wires[1]<self.nqubits
+        if not valid:
             raise ValueError('invalid wires')
         if trusted and not matrix.flags.writeable and not derivative.flags.writeable:
             if param!=-1 and not 0<=param<self.nparams:raise ValueError('invalid parameter')
@@ -240,18 +281,25 @@ class NoisyPauliCircuit:
         t,d=transfer(U,dt if param!=-1 else None)
         return self._stage(wires,t,d,param,'FSIM',theta,phi,scale)
 
-    def channel_pauli(self,wire:int,axis:str,probability:float):
+    def channel_pauli(self,wire:int,axis:str,probability:float,param:int=-1,scale:float=1.):
         if not 0<=probability<=1:raise ValueError('invalid probability')
         axis=axis.upper(); p={'X':X,'Y':Y,'Z':Z}.get(axis)
         if p is None:raise ValueError('invalid Pauli')
+        if param!=-1:
+            return self._stage((wire,),pauli_error_ptm(axis,probability),pauli_error_slope(axis),param,
+                               f'{axis}_ERROR',probability,scale=scale,data=(probability,),trusted=True)
         t=(1-probability)*np.eye(4)+probability*transfer(p)[0]
         return self._stage((wire,),t,name=f'{axis}_ERROR',data=(probability,))
 
-    def channel_depolarize(self,wires:Sequence[int],probability:float):
-        return self._stage(wires,depolarizing_ptm(probability,len(wires)),name='DEPOLARIZE',data=(probability,))
+    def channel_depolarize(self,wires:Sequence[int],probability:float,param:int=-1,scale:float=1.):
+        if param!=-1:
+            return self._stage(wires,depolarizing_ptm(probability,len(wires)),depolarizing_slope(len(wires)),param,
+                               'DEPOLARIZE',probability,scale=scale,data=(probability,),trusted=True)
+        return self._stage(wires,depolarizing_ptm(probability,len(wires)),_ZERO4 if len(wires)==1 else _ZERO16,
+                           name='DEPOLARIZE',data=(probability,),trusted=True)
 
     def channel_relax(self,wire:int,duration:float,T1:float,T2:float):
-        return self._stage((wire,),relaxation_ptm(duration,T1,T2),name='T1_T2',data=(duration,T1,T2))
+        return self._stage((wire,),relaxation_ptm(duration,T1,T2),_ZERO4,name='T1_T2',data=(duration,T1,T2),trusted=True)
 
     def set_readout(self,wire:int,p01:float,p10:float):
         if not 0<=wire<self.nqubits or not 0<=p01<=1 or not 0<=p10<=1:raise ValueError('invalid readout')
@@ -273,6 +321,13 @@ class NoisyPauliCircuit:
             theta=st.angle+st.scale*float(deltas[st.param])
             if st.name in ('RX','RY','RZ','RZZ'):
                 mat,der=cached_gate_ptm(st.name,theta,True)
+            elif st.name in NOISE_PARAMETERS:
+                if st.name=='DEPOLARIZE':
+                    mat,der=depolarizing_ptm(theta,len(st.wires)),depolarizing_slope(len(st.wires))
+                else:
+                    mat,der=pauli_error_ptm(st.name[0],theta),pauli_error_slope(st.name[0])
+                out.stages.append(Stage(st.wires,mat,der*st.scale,st.param,st.name,theta,st.phi,st.scale,(theta,)))
+                continue
             elif st.name=='FSIM':
                 u,du,_=fsim(theta,st.phi)
                 mat,der=transfer(u,du)

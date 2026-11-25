@@ -28,7 +28,7 @@ import numpy as np
 
 from ._indexed import ConeGroups
 from ._native import CGraphStats, CGraphSupport, library
-from ._reference import ConeOverflow, P, P2
+from ._reference import ConeOverflow, NOISE_PARAMETERS, P, P2
 
 
 class GraphLimitExceeded(ConeOverflow):
@@ -112,7 +112,7 @@ def _support(stages):
     which = np.empty(len(stages), dtype=np.intp)
     for index, stage in enumerate(stages):
         if stage.param >= 0:
-            key = (stage.name, stage.phi if stage.name == "FSIM" else None)
+            key = (stage.name, len(stage.wires), stage.phi if stage.name == "FSIM" else None)
         else:
             key = np.asarray(stage.matrix, dtype=float).tobytes()
         if key not in known:
@@ -128,7 +128,11 @@ def _support(stages):
 
 def _support_record(stage):
     """One CGraphSupport as 20 uint16: 16 row masks, the identity mask, padding."""
-    if stage.param >= 0:
+    if stage.param >= 0 and stage.name in NOISE_PARAMETERS:
+        support = np.eye(4 ** len(stage.wires), dtype=bool)
+        slope = np.diag(stage.derivative)
+        identity = [slope[row] == 0. for row in range(len(support))]
+    elif stage.param >= 0:
         coefficients = _fourier(stage)
         support = np.any(coefficients != 0, axis=0)
         constant = np.zeros_like(coefficients)

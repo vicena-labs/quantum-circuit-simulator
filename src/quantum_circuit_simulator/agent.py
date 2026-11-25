@@ -170,7 +170,7 @@ def plan(circuit, observables):
         return facts
     branching, cache = [], {}
     for stage in impl.stages:
-        key = (stage.name, stage.phi) if stage.param >= 0 else stage.matrix.tobytes()
+        key = (stage.name, len(stage.wires), stage.phi) if stage.param >= 0 else stage.matrix.tobytes()
         if key not in cache:
             rows = _support_record(stage)[:16]
             cache[key] = max(bin(r).count("1") for r in rows)

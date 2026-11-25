@@ -28,6 +28,8 @@ def _integer(value, name, lo, hi):
 
 
 def _real(value, name):
+    if type(value) is float and math.isfinite(value):
+        return value
     if isinstance(value, bool) or not isinstance(value, numbers.Real) or not math.isfinite(float(value)):
         raise ValueError(f"{name} must be a finite real number")
     return float(value)
@@ -89,6 +91,11 @@ class Evaluation:
         return out
 
 
+_ONE_WIRE_GATES = frozenset({"H", "SX", "X", "Y", "Z", "RX", "RY", "RZ"})
+_GATES = _ONE_WIRE_GATES | {"CZ", "ECR", "RZZ"}
+_ROTATIONS = frozenset({"RX", "RY", "RZ", "RZZ"})
+
+
 class Circuit:
     """Circuit builder for 1..16384 logical wires and 0..4096 shared parameters.
 
@@ -116,8 +123,9 @@ class Circuit:
     def _wires(self, wires, arity=None):
         if isinstance(wires, (str, bytes)):
             raise ValueError("wires must be a sequence of wire indices")
-        ws = tuple(_integer(q, "wire", 0, self.n_qubits-1) for q in wires)
-        if len(ws) not in (1, 2) or len(set(ws)) != len(ws) or (arity is not None and len(ws) != arity):
+        last = self._impl.nqubits - 1
+        ws = tuple([_integer(q, "wire", 0, last) for q in wires])
+        if len(ws) not in (1, 2) or (len(ws) == 2 and ws[0] == ws[1]) or (arity is not None and len(ws) != arity):
             raise ValueError("wrong number of wires or duplicate wires")
         return ws
 
@@ -127,12 +135,11 @@ class Circuit:
     def gate(self, name: str, wires: Sequence[int], theta: float = 0.0, param: int = -1, scale: float = 1.0):
         if not isinstance(name, str): raise ValueError("gate name must be text")
         name = name.upper()
-        one = {"H", "SX", "X", "Y", "Z", "RX", "RY", "RZ"}
-        if name not in one | {"CZ", "ECR", "RZZ"}:
+        if name not in _GATES:
             raise ValueError("unsupported gate; use fsim() for fSim and unitary() for any other matrix")
-        ws = self._wires(wires, 1 if name in one else 2)
+        ws = self._wires(wires, 1 if name in _ONE_WIRE_GATES else 2)
         angle = _real(theta, "theta"); p = self._param(param); k = self._scale(scale, p)
-        if name not in {"RX", "RY", "RZ", "RZZ"} and (p != -1 or angle != 0):
+        if name not in _ROTATIONS and (p != -1 or angle != 0):
             raise ValueError("fixed gates do not accept an angle or parameter")
         self._impl.gate(name, ws, angle, p, k)
         return self
@@ -162,18 +169,25 @@ class Circuit:
             raise ValueError("a parameter's scale must be nonzero")
         return k
 
-    def pauli_error(self, wire: int, axis: str, probability: float):
+    def pauli_error(self, wire: int, axis: str, probability: float, param: int = -1, scale: float = 1.0):
+        """A Pauli X, Y or Z error; a param makes its probability adjustable, as in depolarize()."""
         wire = self._wires((wire,), 1)[0]
         if not isinstance(axis, str): raise ValueError("axis must be X, Y or Z")
-        self._impl.channel_pauli(wire, axis, _real(probability, "probability"))
+        p = self._param(param)
+        self._impl.channel_pauli(wire, axis, _real(probability, "probability"), p, self._scale(scale, p))
         return self
 
-    def depolarize(self, wires: Sequence[int], probability: float):
+    def depolarize(self, wires: Sequence[int], probability: float, param: int = -1, scale: float = 1.0):
         """Total probability of uniformly selected NONIDENTITY Pauli errors.
 
         This is not Aer lambda: lambda = p * 4**k / (4**k - 1).
+        With a param, the probability is probability + scale * shift[param], so
+        noise rates can be swept or fitted, with gradients, without rebuilding.
+        Every bound probability must lie in [0, 1].
         """
-        self._impl.channel_depolarize(self._wires(wires), _real(probability, "probability"))
+        p = self._param(param)
+        self._impl.channel_depolarize(self._wires(wires), _real(probability, "probability"), p,
+                                      self._scale(scale, p))
         return self
 
     def relax(self, wire: int, duration: float, t1: float, t2: float):
