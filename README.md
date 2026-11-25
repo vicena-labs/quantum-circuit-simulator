@@ -62,9 +62,21 @@ Supported operations include H, SX, X/Y/Z, RX/RY/RZ, CZ, ECR, fSim (theta deriva
 
 A quantum computer's output can be checked on an ordinary computer by simulating the same circuit. We compare this package with **seven other open-source simulators on 26 circuits**, from 10 to 1,024 qubits, on one Vicena computer (an AMD EPYC server).
 
-**The comparison is being rerun, so no speed ratios are quoted here for now.** The published tables of 23–24 November 2026 ran PauliPropagation.jl without two techniques from its own advanced-performance notebook: a workspace sized up front and `MultiPauliSum` zones. On one circuit tried since on a laptop, these made it about 2 times faster on one thread and 6 times on eight; on two large shallow grids they gained little or nothing. Leads over that tool in those tables may therefore be too large, and its failures there may not hold. The figures return here, with a chart, when the rerun is complete. Until then [the tables and raw records](benchmarks/independent/results-2026-11-24-vicena/README.md) stand as a record of that run.
+On repeated runs of a prepared circuit, as in an optimiser or a parameter sweep, this package is **about 3 to 100 times faster** than the fastest of the seven. Each row sets our slowest measured time against the best time of any other simulator, over 1 and 16 threads:
 
-**The other simulators**, and how each ran:
+| Circuit, repeated runs | Ours | Fastest other | Lead |
+| --- | ---: | ---: | ---: |
+| Noisy, 1,024 qubits, 3 layers | 321 µs | 33 ms | 103× |
+| Noiseless, 20 qubits, 4 layers | 472 µs | 42 ms | 89× |
+| Noisy, 400 qubits, 3 layers | 146 µs | 12.6 ms | 86× |
+| Noisy, 10 qubits, 4 layers | 27.8 µs | 311 µs | 11× |
+| IBM's 127-qubit experiment, 5 steps, θh = π/2 | 8.67 ms | 80.8 ms | 9.3× |
+| Noiseless, 12 qubits, 2 layers | 21.1 µs | 103 µs | 4.9× |
+| One qubit's value, 100 qubits, 4 layers | 44.7 µs | 144 µs | 3.2× |
+
+Circuits where another tool ran out of memory are left out, as no comparison stands there, and single runs are not claimed. The figures come from the run of 23–24 November 2026 and a rerun of one tool on 24 November in more of its documented setups, on a machine that other work may have shared; a [paired run on an idle machine](benchmarks/independent/paired.py) will replace them. [The raw records and known faults of the first run](benchmarks/independent/results-2026-11-24-vicena/README.md) are published; the rerun's records are not published yet.
+
+**The other simulators**, with thanks to the people who make them, and how each ran:
 
 | Simulator | What it is | Set up as |
 | --- | --- | --- |
@@ -80,11 +92,11 @@ Every simulator also ran on circuits cut to each observable's backward light con
 
 - **Small circuits**, where each call's fixed cost dominates.
 - **Deep circuits.** In the published run, exact mode refused circuits of 6–8 layers at its million-term cap; quimb solved three of them in 0.2–1.8 s and Aer the 24-qubit one in 1–14 s. Two deep noisy circuits and IBM's 20-step circuit were finished by no tool.
-- **One-off evaluations of large circuits.** Setup takes 100–300 ms on the 400- and 1,024-qubit grids, so for a single run this package is often slower than PauliPropagation.jl. The published single-run figures overstate it: they charged Julia 35–130 ms of compilation as setup, measured on a laptop, which can reverse the result on small circuits. Profiling puts most of that in building and preparing the circuit in Python, not in compiling the graph.
+- **One-off evaluations of large circuits.** Setup takes 100–300 ms on the 400- and 1,024-qubit grids, so for a single run other tools are often faster. The published single-run figures are invalid, because they counted compilation as another tool's setup. Profiling puts most of that in building and preparing the circuit in Python, not in compiling the graph.
 
 **What makes repeated evaluations cheap:** each observable touches only its backward light cone, and a wire is contracted into the input state as soon as propagation passes it; gates and noise on the same wires are merged, and each layer of gates is applied to a Pauli term in one pass; and the graph backend compiles the propagation once into flat arithmetic, so each new parameter vector is one pass forward and one back.
 
-**Reproduce it** with one command, `benchmarks/independent/scoreboard.sh <out-dir> <threads>`, which checks every tool's installation, records the machine and versions, and marks every circuit where this package is less than ten times faster. The first comparison ran PauliPropagation.jl with slower default settings; the rerun adds its documented advanced techniques. We welcome corrections from any tool's authors. [Measured performance](docs/performance.md) explains the method, and [the raw records](benchmarks/independent/results-2026-11-24-vicena/README.md) keep every refusal and timeout.
+**Reproduce it** with one command, `benchmarks/independent/scoreboard.sh <out-dir> <threads>`, which checks every tool's installation, records the machine and versions, and marks every circuit where this package is less than ten times faster. We welcome corrections from any tool's authors. [Measured performance](docs/performance.md) explains the method, and [the raw records](benchmarks/independent/results-2026-11-24-vicena/README.md) keep every refusal and timeout.
 
 ## Install and run locally
 
